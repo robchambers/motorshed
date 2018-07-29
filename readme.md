@@ -35,4 +35,4 @@ missing_edges, missing_nodes = motorshed.find_all_routes(G, center_node)
 motorshed.draw_map(G, center_node, color_by='through_traffic')
 ```
 
-![alt text](images/Clatsop.png "Clatsop County")
+![alt text](Clatsop.png "Clatsop County")
