@@ -138,4 +138,4 @@ def draw_map(G, center_node, color_by='through_traffic', cmap_name='magma', save
                color='white', s=30, zorder=10, alpha=.75)
 
     if save: fig.savefig('map.png', facecolor=fig.get_facecolor(), dpi=600)
-    fig.show()
+    # fig.show()
