@@ -6,7 +6,7 @@ conda create -c conda-forge --override-channels --name geo osmnx tqdm
 source activate geo
 ```
 
-## You will also need to run the osrm-backend, either by init.py, or...
+## You will also need to run the osrm-backend, either by OSRM.sh, or...
 ```
 docker run -t -v $(pwd):/data osrm/osrm-backend osrm-extract -p /opt/car.lua /data/oregon-latest.osm.pbf
 docker run -t -v $(pwd):/data osrm/osrm-backend osrm-partition /data/oregon-latest.osrm
