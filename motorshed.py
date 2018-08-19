@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.cm as cm
 import requests_cache
 from contexttimer import Timer
+import pickle
 
 # Cache HTTP requests (other than map requests, which I think are too complicated
 #  to do this with). This is a SQLITE cache that never expires.
@@ -58,32 +59,49 @@ def osrm(G, origin_node, center_node, missing_nodes, mode='driving', localhost=T
     
     return route,transit_time,r
 
+
 def get_map(address, place=None, distance=1000):
-    """Get the graph (G) and center_node from OSMNX, initializes through_traffic, transit_time, and calculated"""
-    
+    """Get the graph (G) and center_node from OSMNX, initializes through_traffic, transit_time, and calculated.
+    Uses local cache (via Pickle) when possible."""
+
     if place is not None: distance = 100
-        
-    G,origin_point = ox.graph_from_address(address, distance=distance, 
-                                           network_type='all', return_coords=True)
-    
-    if place is not None:
-        G = ox.graph_from_place(place, network_type='drive')
-    
-    # get center node:
-    center_node = ox.get_nearest_node(G, origin_point)
-    
-    G = ox.project_graph(G)
-    get_transit_times(G, origin_point)
 
-    # initialize edge traffic to 1, source node traffic to 1:
-    for u, v, k, data in G.edges(data=True, keys=True):
-        data['through_traffic'] = 1
+    # calculate fn for cache using fxn arguments.
+    fn = "%s.%s%s.cache.pkl" % (address, place or '', distance)
+    try:
+        # Try to load cache
+        with open(fn, 'rb') as f:
+            (G, center_node, origin_point) = pickle.load(f)
+            return (G, center_node, origin_point)
+    except:
+        # If cache miss, then load from netowrk.
+        print('Cache miss. Loading.')
 
-    for node, data in G.nodes(data=True):
-        data['calculated'] = False
-        
-    return G, center_node
-        
+        G, origin_point = ox.graph_from_address(address, distance=distance,
+                                                network_type='all', return_coords=True)
+
+        if place is not None:
+            G = ox.graph_from_place(place, network_type='drive')
+
+        # get center node:
+        center_node = ox.get_nearest_node(G, origin_point)
+
+        G = ox.project_graph(G)
+
+        # initialize edge traffic to 1, source node traffic to 1:
+        for u, v, k, data in G.edges(data=True, keys=True):
+            data['through_traffic'] = 1
+
+        for node, data in G.nodes(data=True):
+            data['calculated'] = False
+
+        # Save to cache for next time.
+        with open(fn, 'wb') as f:
+            pickle.dump((G, center_node, origin_point), f)
+
+        return G, center_node, origin_point
+
+
 def increment_edges(route, G, missing_edges):
     """For a given route, increment through-traffic for every edge on the route"""
     
