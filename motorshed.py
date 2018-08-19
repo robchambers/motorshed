@@ -291,3 +291,12 @@ if __name__ == '__main__':
     from bokeh.io import export_png
     with Timer(prefix='PNG'):
         export_png(p, filename=fn+'.png')
+
+
+    from bokeh.resources import CDN
+    from bokeh.embed import file_html
+
+    with Timer(prefix='HTML'):
+        html = file_html(p, CDN, fn)
+        with open(fn+'.html', 'w') as f:
+            f.write(html)
