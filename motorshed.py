@@ -235,3 +235,32 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
 
     return p
 
+if __name__ == '__main__':
+
+    address = '601 Minnesota St San Francisco, CA 94107'
+    distance = 500
+
+    with Timer(prefix='Get map'):
+        G, center_node, origin_point = get_map(address, distance=distance)
+
+    with Timer(prefix='Get transit times'):
+        get_transit_times(G, origin_point)
+
+    with Timer(prefix='Calculate traffic via'):
+        missing_edges, missing_nodes = find_all_routes(G, center_node)
+
+    # Make a map and save it as .SVG
+    from bokeh.io import export_svgs
+
+    fn = ("%s.%s" % (address, distance)).replace(',', '')
+    print(fn)
+
+    p = make_bokeh_map(G, center_node, output_backend='svg')
+
+    with Timer(prefix='SVG'):
+        export_svgs(p,
+                    filename=fn + '.svg')
+
+    from bokeh.io import export_png
+    with Timer(prefix='PNG'):
+        export_png(p, filename=fn+'.png')
