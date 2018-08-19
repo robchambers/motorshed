@@ -4,6 +4,13 @@ import time
 from tqdm import tqdm
 import numpy as np
 import matplotlib.cm as cm
+import requests_cache
+from contexttimer import Timer
+
+# Cache HTTP requests (other than map requests, which I think are too complicated
+#  to do this with). This is a SQLITE cache that never expires.
+requests_cache.install_cache()
+
 
 def chunks(l, n):
     """Yield successive n-sized chunks from l."""
