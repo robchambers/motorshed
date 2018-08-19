@@ -2,7 +2,8 @@
 
 ```
 conda config --add channels conda-forge 
-conda create -c conda-forge --override-channels --name geo osmnx tqdm
+conda create -c conda-forge --override-channels --name geo osmnx tqdm selenium phantomjs pillow bokeh jupyter
+pip install requests_cache
 source activate geo
 ```
 
