@@ -94,7 +94,7 @@ def get_map(address, place=None, distance=1000):
 
         # initialize edge traffic to 1, source node traffic to 1:
         for u, v, k, data in G.edges(data=True, keys=True):
-            data['through_traffic'] = 1
+            data['through_traffic'] = 1 # BASELINE
 
         for node, data in G.nodes(data=True):
             data['calculated'] = False
@@ -124,18 +124,33 @@ def increment_edges(route, G, missing_edges):
         # increment_edges(route[1:], G, missing_edges)
 
 
-def find_all_routes(G, center_node):
+def find_all_routes(G, center_node, max_requests=None):
     """Run through the nodes in the graph, calculate routes, and recursively increment edges"""
 
     missing_edges = set([])
     missing_nodes = set([])
 
-    for origin_node in tqdm(G.nodes()):
-        if not G.node[origin_node]['calculated']:
-            route, transit_time, r = osrm(G, origin_node, center_node, missing_nodes, mode='driving')
-            route = [node for node in route if node in list(G)]
+    n_requests = 0
 
-            increment_edges(route, G, missing_edges)
+    duration_threshold = pd.Series([G.nodes[n]['transit_time'] for n in G.nodes]).max() * .5
+    print('SHOWING TRAVEL FROM ADDRESSES WITHIN %.1f MINUTES.' % (duration_threshold/60.0))
+    for origin_node in tqdm(G.nodes()):
+        if not G.node[origin_node]['calculated'] and G.node[origin_node]['transit_time'] < duration_threshold:
+            n_requests += 1
+            # print('calculating (%d / %s).' % (n_requests, max_requests))
+            try:
+                route, transit_time, r = osrm(G, origin_node, center_node, missing_nodes, mode='driving')
+                route = [node for node in route if node in list(G)]
+                increment_edges(route, G, missing_edges)
+                if max_requests and (n_requests >= max_requests):
+                    print('Max requests reached.')
+                    break
+            except Exception as e:
+                print(e)
+        # else:
+            # print('skipping.')
+    else:
+        print('Analyzed all nodes without reaching max requests.')
 
     return missing_edges, missing_nodes
 
@@ -179,20 +194,21 @@ from bokeh.models import HoverTool, ColumnDataSource
 
 from bokeh.palettes import Magma256
 
-def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, plot_height=500, output_backend='canvas'):
+def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, plot_height=500, output_backend='canvas',
+                   min_intensity_ratio=.05, min_width=.5):
     """Creates a Bokeh map that can either be displayed live (e.g., in a notebook or webpage) or saved to disk.
 
     If saving as svg, set output_backend to 'svg'."""
 
     edge_intensity = np.log2(np.array([data['through_traffic'] for u, v, data in G.edges(data=True)]))
-    edge_widths = (edge_intensity / edge_intensity.max() ) * 2 + .5
+    edge_widths = (edge_intensity / edge_intensity.max() ) * 2 + min_width
 
     if color_by == 'through_traffic':
-        edge_intensity = (edge_intensity / edge_intensity.max() ) * .95 + .05
+        edge_intensity = (edge_intensity / edge_intensity.max() ) * (1 - min_intensity_ratio) + min_intensity_ratio
         edge_intensity = (edge_intensity*255).astype(np.uint8)
     elif color_by == 'transit_time':
         edge_intensity = np.array([G.node[u]['transit_time'] + G.node[v]['transit_time'] for u,v in G.edges()])
-        edge_intensity = (edge_intensity / edge_intensity.max() ) * .95 + .05
+        edge_intensity = (edge_intensity / edge_intensity.max() ) * (1 - min_intensity_ratio) + min_intensity_ratio
         edge_intensity = (255 - edge_intensity*255).astype(np.uint8)
 
     lines = []
@@ -208,7 +224,12 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
             ys = (G.nodes[u]['y'], G.nodes[v]['y'])
 
         line = {'xs': tuple(xs), 'ys': tuple(ys), 'color': color, 'width': width, 'u':u, 'v':v,
-                'data': str(data)}
+                'through_traffic': data['through_traffic'],
+                # 'name': data.get('name', ''),
+                # 'oneway': data.get('oneway', ''),
+                # 'highway': data.get('highway', ''),
+                # 'data': str(data.keys())
+                }
         lines.append(line)
 
 
@@ -227,12 +248,15 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
                 line_join='round', line_cap='round')
     hover = HoverTool(tooltips=[#('xs', '@xs'),
                                 #('ys', '@ys'),
-                                ('color', '@color'),
+                                # ('color', '@color'),
                                 ('width', '@width'),
                                 ('u', '@u'),
                                 ('v', '@v'),
-                                ('data', '@data'),
-
+                                # ('name', '@name'),
+                                ('through_traffic', '@through_traffic'),
+                                # ('highway', '@highway'),
+                                # ('oneway', '@oneway'),
+                                # ('data', '@data'),
                                ])
     p.add_tools(hover)
 
@@ -241,7 +265,7 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
 if __name__ == '__main__':
 
     address = '601 Minnesota St San Francisco, CA 94107'
-    distance = 500
+    distance = 10000
 
     with Timer(prefix='Get map'):
         G, center_node, origin_point = get_map(address, distance=distance)
@@ -250,7 +274,7 @@ if __name__ == '__main__':
         get_transit_times(G, origin_point)
 
     with Timer(prefix='Calculate traffic via'):
-        missing_edges, missing_nodes = find_all_routes(G, center_node)
+        missing_edges, missing_nodes = find_all_routes(G, center_node, max_requests=3000)
 
     # Make a map and save it as .SVG
     from bokeh.io import export_svgs
