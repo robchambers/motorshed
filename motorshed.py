@@ -7,6 +7,8 @@ import matplotlib.cm as cm
 import requests_cache
 from contexttimer import Timer
 import pickle
+import pandas as pd
+
 
 # Cache HTTP requests (other than map requests, which I think are too complicated
 #  to do this with). This is a SQLITE cache that never expires.
@@ -168,3 +170,68 @@ def draw_map(G, center_node, color_by='through_traffic', cmap_name='magma', save
 
     if save: fig.savefig('map.png', facecolor=fig.get_facecolor(), dpi=600)
     # fig.show()
+
+from bokeh.plotting import figure
+from bokeh.models import HoverTool, ColumnDataSource
+
+from bokeh.palettes import Magma256
+
+def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, plot_height=500, output_backend='canvas'):
+    """Creates a Bokeh map that can either be displayed live (e.g., in a notebook or webpage) or saved to disk.
+
+    If saving as svg, set output_backend to 'svg'."""
+
+    edge_intensity = np.log2(np.array([data['through_traffic'] for u, v, data in G.edges(data=True)]))
+    edge_widths = (edge_intensity / edge_intensity.max() ) * 2 + .5
+
+    if color_by == 'through_traffic':
+        edge_intensity = (edge_intensity / edge_intensity.max() ) * .95 + .05
+        edge_intensity = (edge_intensity*255).astype(np.uint8)
+    elif color_by == 'transit_time':
+        edge_intensity = np.array([G.node[u]['transit_time'] + G.node[v]['transit_time'] for u,v in G.edges()])
+        edge_intensity = (edge_intensity / edge_intensity.max() ) * .95 + .05
+        edge_intensity = (255 - edge_intensity*255).astype(np.uint8)
+
+    lines = []
+    for (u, v, data), width, intensity in zip(G.edges(keys=False, data=True), edge_widths, edge_intensity):
+        edge_intensity = intensity
+        color = Magma256[edge_intensity]
+        if 'geometry' in data:
+            xs, ys = data['geometry'].xy
+        else:
+            # if it doesn't have a geometry attribute, the edge is a straight
+            # line from node to node
+            xs = (G.nodes[u]['x'], G.nodes[v]['x'])
+            ys = (G.nodes[u]['y'], G.nodes[v]['y'])
+
+        line = {'xs': tuple(xs), 'ys': tuple(ys), 'color': color, 'width': width, 'u':u, 'v':v,
+                'data': str(data)}
+        lines.append(line)
+
+
+    df = pd.DataFrame(lines)
+    df = df.sort_values('width')
+    source = ColumnDataSource(df)
+    p = figure(plot_width=plot_width, plot_height=plot_height, match_aspect=True, output_backend=output_backend)
+    p.outline_line_color = None
+    p.xaxis.visible = False
+    p.yaxis.visible = False
+    p.xgrid.visible = False
+    p.ygrid.visible = False
+    p.background_fill_color = "black" #None
+    p.border_fill_color = None
+    p.multi_line('xs', 'ys', source=source, color='color', line_width='width',
+                line_join='round', line_cap='round')
+    hover = HoverTool(tooltips=[#('xs', '@xs'),
+                                #('ys', '@ys'),
+                                ('color', '@color'),
+                                ('width', '@width'),
+                                ('u', '@u'),
+                                ('v', '@v'),
+                                ('data', '@data'),
+
+                               ])
+    p.add_tools(hover)
+
+    return p
+
