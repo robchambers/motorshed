@@ -110,15 +110,18 @@ def increment_edges(route, G, missing_edges):
     """For a given route, increment through-traffic for every edge on the route"""
 
     if len(route) > 0:
+        accum_traffic = 1
         for i0, i1 in zip(route[:-1], route[1:]):
+            if not G.node[i0]['calculated']:
+                accum_traffic += 1
             try:
-                G.edges[i0, i1, 0]['through_traffic'] += 1  # new way
+                G.edges[i0, i1, 0]['through_traffic'] += accum_traffic # new way
             except KeyError:
                 missing_edges.update((i0, i1))
-                continue
+                # continue
 
-        G.node[route[0]]['calculated'] = True
-        increment_edges(route[1:], G, missing_edges)
+            G.node[i0]['calculated'] = True
+        # increment_edges(route[1:], G, missing_edges)
 
 
 def find_all_routes(G, center_node):
