@@ -36,7 +36,8 @@ def get_transit_times(G, origin_point):
     for n,node in enumerate(G.node):
         G.node[node]['transit_time'] = times[n]
 
-def osrm(G, origin_node, center_node, missing_nodes, mode='driving', localhost=True):
+
+def osrm(G, origin_node, center_node, missing_nodes, mode='driving', localhost=False):
     """Query the local or remote OSRM for route and transit time"""
     
     start = '%f,%f' % (G.node[origin_node]['lon'],G.node[origin_node]['lat'])
