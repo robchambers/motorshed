@@ -132,7 +132,7 @@ def find_all_routes(G, center_node, max_requests=None):
 
     n_requests = 0
 
-    duration_threshold = pd.Series([G.nodes[n]['transit_time'] for n in G.nodes]).max() * .5
+    duration_threshold = pd.Series([G.nodes[n]['transit_time'] for n in G.nodes]).max() # * .5
     print('SHOWING TRAVEL FROM ADDRESSES WITHIN %.1f MINUTES.' % (duration_threshold/60.0))
     for origin_node in tqdm(G.nodes()):
         if not G.node[origin_node]['calculated'] and G.node[origin_node]['transit_time'] < duration_threshold:
@@ -192,13 +192,14 @@ def draw_map(G, center_node, color_by='through_traffic', cmap_name='magma', save
 from bokeh.plotting import figure
 from bokeh.models import HoverTool, ColumnDataSource
 
-from bokeh.palettes import Magma256
+from bokeh.palettes import Magma256,Viridis256,Greys256,Cividis256
 
 def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, plot_height=500, output_backend='canvas',
-                   min_intensity_ratio=.05, min_width=.5):
+                   min_intensity_ratio=.05, min_width=.5, palette_name='magma'):
     """Creates a Bokeh map that can either be displayed live (e.g., in a notebook or webpage) or saved to disk.
 
     If saving as svg, set output_backend to 'svg'."""
+    palette = {'magma':Magma256, 'viridis':Viridis256, 'greys':Greys256, 'cividis':Cividis256}[palette_name]
 
     edge_intensity = np.log2(np.array([data['through_traffic'] for u, v, data in G.edges(data=True)]))
     edge_widths = (edge_intensity / edge_intensity.max() ) * 2 + min_width
@@ -214,7 +215,7 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
     lines = []
     for (u, v, data), width, intensity in zip(G.edges(keys=False, data=True), edge_widths, edge_intensity):
         edge_intensity = intensity
-        color = Magma256[edge_intensity]
+        color = palette[edge_intensity]
         if 'geometry' in data:
             xs, ys = data['geometry'].xy
         else:
@@ -264,11 +265,12 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
 
 if __name__ == '__main__':
 
-    address = '601 Minnesota St San Francisco, CA 94107'
+    address = '2700 Broadway, New York, NY 10025'
+    place = 'Manhattan, New York, NY'
     distance = 10000
 
     with Timer(prefix='Get map'):
-        G, center_node, origin_point = get_map(address, distance=distance)
+        G, center_node, origin_point = get_map(address, distance=distance, place=place)
 
     with Timer(prefix='Get transit times'):
         get_transit_times(G, origin_point)
@@ -282,7 +284,7 @@ if __name__ == '__main__':
     fn = ("%s.%s" % (address, distance)).replace(',', '')
     print(fn)
 
-    p = make_bokeh_map(G, center_node, output_backend='svg')
+    p = make_bokeh_map(G, center_node, output_backend='svg', min_width=0.0, palette_name='viridis')
 
     with Timer(prefix='SVG'):
         export_svgs(p,
