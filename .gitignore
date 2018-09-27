@@ -1,2 +1,9 @@
 *.osrm*
 *.pbf
+*.html
+*.png
+*.svg
+*.pkl
+*.pdf
+*.sqlite
+*.pyc
