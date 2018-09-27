@@ -247,6 +247,13 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
     p.border_fill_color = None
     p.multi_line('xs', 'ys', source=source, color='color', line_width='width',
                 line_join='round', line_cap='round')
+    # for size,color,alpha in [(15,palette[0],0.25),(10,palette[127],0.3),
+    #                          (5,palette[255],0.6),(2,'white',0.75)]:
+    for size,color,alpha in [(10,'white',0.25),(5,'white',0.3),
+                             (2,'white',0.6),(1,'white',0.75)]:
+        p.circle([G.node[center_node]['x']], [G.node[center_node]['y']],
+               color=color, size=size, alpha=alpha)
+
     hover = HoverTool(tooltips=[#('xs', '@xs'),
                                 #('ys', '@ys'),
                                 # ('color', '@color'),
@@ -265,8 +272,16 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
 
 if __name__ == '__main__':
 
+    address = '601 Minnesota St San Francisco, CA 94107'
     address = '2700 Broadway, New York, NY 10025'
     place = 'Manhattan, New York, NY'
+    address = '17655 Dewitt Ave, Morgan Hill, CA 95037'
+    address = 'Arana Cir, Sausalito, CA 94965'
+    address = '291 Eastern Parkway, Brooklyn, NY 11238'
+    address = '20 Ryland Park Drive, San José, CA 95110'
+    address = 'Shriram Center for Bioengineering and Chemical Engineering, Stanford, CA 94305'
+    address = '1807 Telegraph Ave, Oakland, CA 94612'
+    place = None
     distance = 10000
 
     with Timer(prefix='Get map'):
