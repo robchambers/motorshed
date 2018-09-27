@@ -272,16 +272,8 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
 
 if __name__ == '__main__':
 
-    address = '601 Minnesota St San Francisco, CA 94107'
     address = '2700 Broadway, New York, NY 10025'
     place = 'Manhattan, New York, NY'
-    address = '17655 Dewitt Ave, Morgan Hill, CA 95037'
-    address = 'Arana Cir, Sausalito, CA 94965'
-    address = '291 Eastern Parkway, Brooklyn, NY 11238'
-    address = '20 Ryland Park Drive, San José, CA 95110'
-    address = 'Shriram Center for Bioengineering and Chemical Engineering, Stanford, CA 94305'
-    address = '1807 Telegraph Ave, Oakland, CA 94612'
-    place = None
     distance = 10000
 
     with Timer(prefix='Get map'):
