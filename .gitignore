@@ -7,3 +7,5 @@
 *.pdf
 *.sqlite
 *.pyc
+*.gif
+*.json

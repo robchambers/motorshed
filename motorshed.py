@@ -9,6 +9,7 @@ from contexttimer import Timer
 import pickle
 import pandas as pd
 
+from bokeh.io import export_png
 
 # Cache HTTP requests (other than map requests, which I think are too complicated
 #  to do this with). This is a SQLITE cache that never expires.
@@ -134,7 +135,13 @@ def find_all_routes(G, center_node, max_requests=None):
 
     duration_threshold = pd.Series([G.nodes[n]['transit_time'] for n in G.nodes]).max() # * .5
     print('SHOWING TRAVEL FROM ADDRESSES WITHIN %.1f MINUTES.' % (duration_threshold/60.0))
-    for origin_node in tqdm(G.nodes()):
+    ordered_graph = sorted(G.nodes(data=True), key=lambda x: x[1]['transit_time'])
+    for origin_node,data in tqdm(ordered_graph):
+        if n_requests % 100 == 0:
+            fn = ("%s.%s.%03d" % (address, distance, n_requests/100)).replace(',', '')
+            p = make_bokeh_map(G, center_node, output_backend='svg', min_width=0.0, palette_name='viridis')
+            export_png(p, filename=fn+'.png')
+
         if not G.node[origin_node]['calculated'] and G.node[origin_node]['transit_time'] < duration_threshold:
             n_requests += 1
             # print('calculating (%d / %s).' % (n_requests, max_requests))
