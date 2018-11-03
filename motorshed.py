@@ -9,7 +9,7 @@ from contexttimer import Timer
 import pickle
 import pandas as pd
 
-from bokeh.io import export_png
+from bokeh.io import export_png, export_svgs
 
 # Cache HTTP requests (other than map requests, which I think are too complicated
 #  to do this with). This is a SQLITE cache that never expires.
@@ -125,23 +125,19 @@ def increment_edges(route, G, missing_edges):
         # increment_edges(route[1:], G, missing_edges)
 
 
-def find_all_routes(G, center_node, max_requests=None):
+def find_all_routes(G, center_node, max_requests=None, show_progress=False):
     """Run through the nodes in the graph, calculate routes, and recursively increment edges"""
 
     missing_edges = set([])
     missing_nodes = set([])
 
     n_requests = 0
+    frame = 0
 
     duration_threshold = pd.Series([G.nodes[n]['transit_time'] for n in G.nodes]).max() # * .5
     print('SHOWING TRAVEL FROM ADDRESSES WITHIN %.1f MINUTES.' % (duration_threshold/60.0))
     ordered_graph = sorted(G.nodes(data=True), key=lambda x: x[1]['transit_time'])
-    for origin_node,data in tqdm(ordered_graph):
-        if n_requests % 100 == 0:
-            fn = ("%s.%s.%03d" % (address, distance, n_requests/100)).replace(',', '')
-            p = make_bokeh_map(G, center_node, output_backend='svg', min_width=0.0, palette_name='viridis')
-            export_png(p, filename=fn+'.png')
-
+    for n,(origin_node,data) in enumerate(tqdm(ordered_graph)):
         if not G.node[origin_node]['calculated'] and G.node[origin_node]['transit_time'] < duration_threshold:
             n_requests += 1
             # print('calculating (%d / %s).' % (n_requests, max_requests))
@@ -156,6 +152,13 @@ def find_all_routes(G, center_node, max_requests=None):
                 print(e)
         # else:
             # print('skipping.')
+
+        if show_progress and n in range(1, len(G), len(G)//50):
+            frame += 1
+            fn = ("%s.%s.%02d" % (address, distance, frame)).replace(',', '')
+            p = make_bokeh_map(G, center_node, output_backend='svg', min_width=0.0, palette_name='viridis')
+            export_png(p, filename=fn + '.png')
+
     else:
         print('Analyzed all nodes without reaching max requests.')
 
@@ -201,8 +204,9 @@ from bokeh.models import HoverTool, ColumnDataSource
 
 from bokeh.palettes import Magma256,Viridis256,Greys256,Cividis256
 
-def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, plot_height=500, output_backend='canvas',
-                   min_intensity_ratio=.05, min_width=.5, palette_name='magma'):
+def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=1000, plot_height=1000, 
+                   toolbar_location=None, output_backend='canvas', min_intensity_ratio=.05, 
+                   min_width=.5, palette_name='magma'):
     """Creates a Bokeh map that can either be displayed live (e.g., in a notebook or webpage) or saved to disk.
 
     If saving as svg, set output_backend to 'svg'."""
@@ -244,7 +248,8 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=500, p
     df = pd.DataFrame(lines)
     df = df.sort_values('width')
     source = ColumnDataSource(df)
-    p = figure(plot_width=plot_width, plot_height=plot_height, match_aspect=True, output_backend=output_backend)
+    p = figure(plot_width=plot_width, plot_height=plot_height, match_aspect=True, 
+               output_backend=output_backend, toolbar_location=toolbar_location)
     p.outline_line_color = None
     p.xaxis.visible = False
     p.yaxis.visible = False
@@ -290,15 +295,15 @@ if __name__ == '__main__':
         get_transit_times(G, origin_point)
 
     with Timer(prefix='Calculate traffic via'):
-        missing_edges, missing_nodes = find_all_routes(G, center_node, max_requests=3000)
+        missing_edges, missing_nodes = find_all_routes(G, center_node, max_requests=30000, show_progress=False)
 
     # Make a map and save it as .SVG
-    from bokeh.io import export_svgs
 
     fn = ("%s.%s" % (address, distance)).replace(',', '')
     print(fn)
 
-    p = make_bokeh_map(G, center_node, output_backend='svg', min_width=0.0, palette_name='viridis')
+    p = make_bokeh_map(G, center_node, output_backend='svg', min_width=0.0, 
+                       palette_name='viridis', toolbar_location=None)
 
     with Timer(prefix='SVG'):
         export_svgs(p,
