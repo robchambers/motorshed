@@ -37,3 +37,8 @@ motorshed.draw_map(G, center_node, color_by='through_traffic')
 ```
 
 ![alt text](images/Clatsop.png "Clatsop County")
+
+### To animate, use convert:
+```
+convert -delay 10 -loop 0 2700*.svg.png animate-2700-by-time.gif
+```
