@@ -288,14 +288,28 @@ if __name__ == '__main__':
     place = 'Manhattan, New York, NY'
     distance = 10000
 
-    with Timer(prefix='Get map'):
-        G, center_node, origin_point = get_map(address, distance=distance, place=place)
+    # calculate fn for cache using fxn arguments.
+    fn = "%s.%s%s.routed.pkl" % (address, place or '', distance)
+    try:
+        # Try to load cache
+        with open(fn, 'rb') as f:
+            (G, center_node) = pickle.load(f)
 
-    with Timer(prefix='Get transit times'):
-        get_transit_times(G, origin_point)
+    except:
+        print("Routing cache missing. Crunching...")
 
-    with Timer(prefix='Calculate traffic via'):
-        missing_edges, missing_nodes = find_all_routes(G, center_node, max_requests=30000, show_progress=False)
+        with Timer(prefix='Get map'):
+            G, center_node, origin_point = get_map(address, distance=distance, place=place)
+
+        with Timer(prefix='Get transit times'):
+            get_transit_times(G, origin_point)
+
+        with Timer(prefix='Calculate traffic via'):
+                missing_edges, missing_nodes = find_all_routes(G, center_node, max_requests=30000, show_progress=False)
+
+        # Save to cache for next time.
+        with open(fn, 'wb') as f:
+            pickle.dump((G, center_node), f)
 
     # Make a map and save it as .SVG
 
