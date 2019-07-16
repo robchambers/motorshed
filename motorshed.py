@@ -134,11 +134,11 @@ def find_all_routes(G, center_node, max_requests=None, show_progress=False):
     n_requests = 0
     frame = 0
 
-    duration_threshold = pd.Series([G.nodes[n]['transit_time'] for n in G.nodes]).max() # * .5
-    print('SHOWING TRAVEL FROM ADDRESSES WITHIN %.1f MINUTES.' % (duration_threshold/60.0))
+    # duration_threshold = pd.Series([G.nodes[n]['transit_time'] for n in G.nodes]).max() # * .5
+    # print('SHOWING TRAVEL FROM ADDRESSES WITHIN %.1f MINUTES.' % (duration_threshold/60.0))
     ordered_graph = sorted(G.nodes(data=True), key=lambda x: x[1]['transit_time'])
     for n,(origin_node,data) in enumerate(tqdm(ordered_graph)):
-        if not G.node[origin_node]['calculated'] and G.node[origin_node]['transit_time'] < duration_threshold:
+        if not G.node[origin_node]['calculated']:# and G.node[origin_node]['transit_time'] < duration_threshold:
             n_requests += 1
             # print('calculating (%d / %s).' % (n_requests, max_requests))
             try:
@@ -166,7 +166,7 @@ def find_all_routes(G, center_node, max_requests=None, show_progress=False):
 
 
 def draw_map(G, center_node, color_by='through_traffic', cmap_name='magma', save=True):
-    """Draw the map, coloring by through_traffic or by transit_time"""
+    """Draw the map using OSMNX, coloring by through_traffic or by transit_time"""
 
     edge_intensity = np.log2(np.array([data['through_traffic'] for u, v, data in G.edges(data=True)]))
     edge_widths = (edge_intensity / edge_intensity.max()) * 3  # + 1
@@ -202,15 +202,21 @@ def draw_map(G, center_node, color_by='through_traffic', cmap_name='magma', save
 from bokeh.plotting import figure
 from bokeh.models import HoverTool, ColumnDataSource
 
-from bokeh.palettes import Magma256,Viridis256,Greys256,Cividis256
+from bokeh.palettes import Magma256,Viridis256,Greys256,Cividis256,Inferno256,Plasma256
 
 def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=1000, plot_height=1000, 
                    toolbar_location=None, output_backend='canvas', min_intensity_ratio=.05, 
-                   min_width=.5, palette_name='magma'):
+                   min_width=0.0, palette_name='magma'):
     """Creates a Bokeh map that can either be displayed live (e.g., in a notebook or webpage) or saved to disk.
 
     If saving as svg, set output_backend to 'svg'."""
-    palette = {'magma':Magma256, 'viridis':Viridis256, 'greys':Greys256, 'cividis':Cividis256}[palette_name]
+
+    if type(center_node) is not list: 
+        center_node = [center_node]
+
+    palette = {'magma':Magma256, 'viridis':Viridis256, 'greys':Greys256, 
+               'cividis':Cividis256, 'inferno':Inferno256, 'plasma':Plasma256}
+    palette = palette[palette_name]
 
     edge_intensity = np.log2(np.array([data['through_traffic'] for u, v, data in G.edges(data=True)]))
     edge_widths = (edge_intensity / edge_intensity.max() ) * 2 + min_width
@@ -218,6 +224,7 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=1000, 
     if color_by == 'through_traffic':
         edge_intensity = (edge_intensity / edge_intensity.max() ) * (1 - min_intensity_ratio) + min_intensity_ratio
         edge_intensity = (edge_intensity*255).astype(np.uint8)
+        
     elif color_by == 'transit_time':
         edge_intensity = np.array([G.node[u]['transit_time'] + G.node[v]['transit_time'] for u,v in G.edges()])
         edge_intensity = (edge_intensity / edge_intensity.max() ) * (1 - min_intensity_ratio) + min_intensity_ratio
@@ -261,10 +268,11 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=1000, 
                 line_join='round', line_cap='round')
     # for size,color,alpha in [(15,palette[0],0.25),(10,palette[127],0.3),
     #                          (5,palette[255],0.6),(2,'white',0.75)]:
-    for size,color,alpha in [(10,'white',0.25),(5,'white',0.3),
-                             (2,'white',0.6),(1,'white',0.75)]:
-        p.circle([G.node[center_node]['x']], [G.node[center_node]['y']],
-               color=color, size=size, alpha=alpha)
+    for cn in center_node:
+        for size,color,alpha in [(10,'white',0.25),(5,'white',0.3),
+                                (2,'white',0.6),(1,'white',0.75)]:
+            p.circle([G.node[cn]['x']], [G.node[cn]['y']],
+                    color=color, size=size, alpha=alpha)
 
     hover = HoverTool(tooltips=[#('xs', '@xs'),
                                 #('ys', '@ys'),
@@ -305,7 +313,7 @@ if __name__ == '__main__':
             get_transit_times(G, origin_point)
 
         with Timer(prefix='Calculate traffic via'):
-                missing_edges, missing_nodes = find_all_routes(G, center_node, max_requests=30000, show_progress=False)
+                missing_edges, missing_nodes = find_all_routes(G, center_node, max_requests=60000, show_progress=True)
 
         # Save to cache for next time.
         with open(fn, 'wb') as f:
@@ -317,7 +325,7 @@ if __name__ == '__main__':
     print(fn)
 
     p = make_bokeh_map(G, center_node, output_backend='svg', min_width=0.0, 
-                       palette_name='viridis', toolbar_location=None)
+                       palette_name='inferno', toolbar_location=None)
 
     with Timer(prefix='SVG'):
         export_svgs(p,
