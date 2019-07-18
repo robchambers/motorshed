@@ -20,13 +20,13 @@ docker run -t -i -p 5000:5000 -v $(pwd):/data osrm/osrm-backend osrm-routed --al
 ```python
 import motorshed
 address = 'Astoria, OR'
-G, center_node = motorshed.get_map(address, distance=20000)
+G, center_node, origin_point = motorshed.get_map(address, distance=20000)
 ```
 
 ### or, you can run by place:
 ```python
 place = 'Clatsop County, Oregon, USA'
-G, center_node = motorshed.get_map(address, place=place)
+G, center_node, origin_point = motorshed.get_map(address, place=place)
 ```
 
 
