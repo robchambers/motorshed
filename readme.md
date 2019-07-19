@@ -32,7 +32,7 @@ G, center_node, origin_point = motorshed.get_map(address, place=place)
 
 ### then analyze and draw the map (5-70 it/s seems normal):
 ```python
-get_transit_times(G, origin_point)
+motorshed.get_transit_times(G, origin_point)
 missing_edges, missing_nodes = motorshed.find_all_routes(G, center_node)
 motorshed.draw_map(G, center_node, color_by='through_traffic')
 ```
