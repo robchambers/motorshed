@@ -12,7 +12,7 @@ import pandas as pd
 from motorshed import config, util
 
 def get_map(address, place=None, distance=1000):
-    """Get the graph (G) and center_node from OSMNX, initializes through_traffic, transit_time, and calculated.
+    """Get the graph (G) and end_node from OSMNX, initializes through_traffic, transit_time, and calculated.
     Uses local cache (via Pickle) when possible."""
 
     if place is not None: distance = 100
@@ -22,6 +22,7 @@ def get_map(address, place=None, distance=1000):
     try:
         # Try to load cache
         (G, center_node, origin_point) = util.from_cache_pkl(cache_name)
+        center_node = ox.get_nearest_node(G, origin_point)
         return (G, center_node, origin_point)
     except:
         # If cache miss, then load from netowrk.
