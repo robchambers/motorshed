@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import requests
+import requests_cache
 from contexttimer import Timer
 
 from motorshed.util import cache_dir
@@ -11,9 +12,9 @@ from motorshed.util import cache_dir
 cache_fn = os.path.join(cache_dir, "requests_cache")
 
 
-# requests_cache.install_cache(cache_fn, backend='sqlite',
-#                              expire_after=60*60*24*7 # expires after 1 week
-#                              )
+requests_cache.install_cache(cache_fn, backend='sqlite',
+                             expire_after=60*60*24*7 # expires after 1 week
+                             )
 
 
 def chunks(l, n):
