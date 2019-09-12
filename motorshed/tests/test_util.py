@@ -1,5 +1,5 @@
-import pytest
 from motorshed import util
+
 
 def test_cache_pkl():
     to_pickle = "Hi I'm a Pickle."

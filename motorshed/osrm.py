@@ -1,28 +1,26 @@
 import os
-import osmnx as ox
-import requests
-import time
-from tqdm import tqdm
+
 import numpy as np
-import matplotlib.cm as cm
-import requests_cache
+import requests
 from contexttimer import Timer
-import pickle
-import pandas as pd
+
 from motorshed.util import cache_dir
 
 # Cache HTTP requests (other than map requests, which I think are too complicated
 #  to do this with). This is a SQLITE cache..
-cache_fn = os.path.join(cache_dir, 'requests_cache')
+cache_fn = os.path.join(cache_dir, "requests_cache")
+
+
 # requests_cache.install_cache(cache_fn, backend='sqlite',
 #                              expire_after=60*60*24*7 # expires after 1 week
 #                              )
+
 
 def chunks(l, n):
     """Yield successive n-sized chunks from l."""
 
     for i in range(0, len(l), n):
-        yield l[i:i + n]
+        yield l[i : i + n]
 
 
 def get_transit_times(G, origin_point):
@@ -31,31 +29,36 @@ def get_transit_times(G, origin_point):
     """
     if type(origin_point) is int:
         origin_point = G.nodes[origin_point]
-        origin_point = [origin_point['lat'], origin_point['lon']]
+        origin_point = [origin_point["lat"], origin_point["lon"]]
 
-    end = '%s,%s' % (origin_point[1], origin_point[0])
-    starts = ['%s,%s' % (data['lon'], data['lat']) for n, data in G.node(data=True)]
+    end = "%s,%s" % (origin_point[1], origin_point[0])
+    starts = ["%s,%s" % (data["lon"], data["lat"]) for n, data in G.node(data=True)]
     times = []
 
     # the table service seems limited in number
     for chunk in chunks(starts, 300):
-        chunk = ';'.join(chunk)
+        chunk = ";".join(chunk)
 
-        #query = 'http://router.project-osrm.org/table/v1/driving/%s;%s?destinations=0' % (end, chunk)
-        query = 'http://maps.motorshed.io/osrm/table/v1/driving/%s;%s?destinations=0' % (end, chunk)
+        # query = 'http://router.project-osrm.org/table/v1/driving/%s;%s?destinations=0' % (end, chunk)
+        query = (
+            "http://maps.motorshed.io/osrm/table/v1/driving/%s;%s?destinations=0"
+            % (end, chunk)
+        )
 
         # print(query)
 
-        with Timer(prefix='osrm table api'):
+        with Timer(prefix="osrm table api"):
             r = requests.get(query)
 
-        times = times + list(np.array(r.json()['durations'])[1:,0])
+        times = times + list(np.array(r.json()["durations"])[1:, 0])
 
     for n, node in enumerate(G.node):
-        G.node[node]['transit_time'] = times[n]
+        G.node[node]["transit_time"] = times[n]
 
 
-def osrm(G, start_node, end_node, missing_nodes=None, mode='driving', private_host=True):
+def osrm(
+    G, start_node, end_node, missing_nodes=None, mode="driving", private_host=True
+):
     """Query the local or remote OSRM for route and transit time.
      FROM start_node TO end_node
     If any nodes are not
@@ -65,28 +68,30 @@ def osrm(G, start_node, end_node, missing_nodes=None, mode='driving', private_ho
     if missing_nodes is None:
         missing_nodes = set([])
 
-    if not hasattr(end_node, 'keys'):
+    if not hasattr(end_node, "keys"):
         end_node = G.node[end_node]
-    if not hasattr(start_node, 'keys'):
+    if not hasattr(start_node, "keys"):
         start_node = G.node[start_node]
 
-    start = '%f,%f' % (start_node['lon'], start_node['lat'])
-    end = '%f,%f' % (end_node['lon'], end_node['lat'])
+    start = "%f,%f" % (start_node["lon"], start_node["lat"])
+    end = "%f,%f" % (end_node["lon"], end_node["lat"])
 
     # if private_host:
-    query = 'http://maps.motorshed.io/osrm/route/v1/%s/%s;%s?steps=true&annotations=true' % (mode, start, end)
+    query = (
+        "http://maps.motorshed.io/osrm/route/v1/%s/%s;%s?steps=true&annotations=true"
+        % (mode, start, end)
+    )
     # else:
     #     query = 'http://router.project-osrm.org/route/v1/%s/%s;%s?steps=true&annotations=true' % (mode, start, end)
     r = requests.get(query)
 
     try:
-        route = r.json()['routes'][0]['legs'][0]['annotation']['nodes']
-        transit_time = r.json()['routes'][0]['duration']
+        route = r.json()["routes"][0]["legs"][0]["annotation"]["nodes"]
+        transit_time = r.json()["routes"][0]["duration"]
 
     except KeyError:
-        print('No route found for %i' % start_node)
+        print("No route found for %i" % start_node)
         missing_nodes.update(start_node)
         route, transit_time = [], np.NaN
 
     return route, transit_time, r
-
