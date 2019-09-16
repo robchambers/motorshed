@@ -22,11 +22,15 @@ def get_map(address, place=None, distance=1000):
         print("Cache miss. Loading.")
 
         G, origin_point = ox.graph_from_address(
-            address, distance=distance, network_type="drive", return_coords=True
+            address,
+            distance=distance,
+            network_type="drive",
+            return_coords=True,
+            simplify=False,
         )
 
         if place is not None:
-            G = ox.graph_from_place(place, network_type="drive")
+            G = ox.graph_from_place(place, network_type="drive", simplify=False)
 
         # get center node:
         center_node = ox.get_nearest_node(G, origin_point)

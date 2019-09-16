@@ -11,10 +11,9 @@ from motorshed.util import cache_dir
 #  to do this with). This is a SQLITE cache..
 cache_fn = os.path.join(cache_dir, "requests_cache")
 
-
-requests_cache.install_cache(cache_fn, backend='sqlite',
-                             expire_after=60*60*24*7 # expires after 1 week
-                             )
+requests_cache.install_cache(
+    cache_fn, backend="sqlite", expire_after=60 * 60 * 24 * 7  # expires after 1 week
+)
 
 
 def chunks(l, n):
@@ -40,11 +39,14 @@ def get_transit_times(G, origin_point):
     for chunk in chunks(starts, 300):
         chunk = ";".join(chunk)
 
-        # query = 'http://router.project-osrm.org/table/v1/driving/%s;%s?destinations=0' % (end, chunk)
         query = (
-            "http://maps.motorshed.io/osrm/table/v1/driving/%s;%s?destinations=0"
+            "http://router.project-osrm.org/table/v1/driving/%s;%s?destinations=0"
             % (end, chunk)
         )
+        # query = (
+        #     "http://maps.motorshed.io/osrm/table/v1/driving/%s;%s?destinations=0"
+        #     % (end, chunk)
+        # )
 
         # print(query)
 
@@ -78,12 +80,15 @@ def osrm(
     end = "%f,%f" % (end_node["lon"], end_node["lat"])
 
     # if private_host:
+    # query = (
+    #     "http://maps.motorshed.io/osrm/route/v1/%s/%s;%s?steps=true&annotations=true"
+    #     % (mode, start, end)
+    # )
+    # else:
     query = (
-        "http://maps.motorshed.io/osrm/route/v1/%s/%s;%s?steps=true&annotations=true"
+        "http://router.project-osrm.org/route/v1/%s/%s;%s?steps=true&annotations=true"
         % (mode, start, end)
     )
-    # else:
-    #     query = 'http://router.project-osrm.org/route/v1/%s/%s;%s?steps=true&annotations=true' % (mode, start, end)
     r = requests.get(query)
 
     try:

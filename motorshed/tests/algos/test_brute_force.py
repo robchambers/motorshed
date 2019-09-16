@@ -42,7 +42,7 @@ def test_find_all_routes(lebanon_map):
 
     with Timer(prefix="Calculate traffic"):
         missing_edges, missing_nodes, n_requests = brute_force.find_all_routes(
-            G, center_node, max_requests=60_000
+            G, center_node, max_requests=500  # 60_000
         )
 
     assert n_requests > 10
