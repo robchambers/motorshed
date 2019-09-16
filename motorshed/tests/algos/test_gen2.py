@@ -40,4 +40,4 @@ def test_gen2_routing(lebanon_map):
 
     Ge4 = gen2.followup_osrm_routing(G, Ge3, Gn3, center_node)
 
-    assert not len(Ge4.query("w==0 and not ignore"))
+    assert not len(Ge4.query("w==0 and ignore==False"))
