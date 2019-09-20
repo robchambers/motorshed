@@ -172,10 +172,7 @@ def followup_heuristic_routing(Ge, Gn):
     """ Route edges that aren't clear by recursively searching for alternative
     routes that eventually get us closer. """
     with Timer(prefix="Follow-up routing using heuristics"):
-        print(
-            "Need to fix %d ambiguous edges." % len(Ge.query("w==0 and ignore==False"))
-        )
-
+        print(f"Need to fix {len(Ge.query('w==0 and ignore==False'))} ambiguous edges (Currently: {len(Ge.query('ignore==True'))} ignored, {len(Ge.query('w!=0 and ignore==False'))} resolved, {len(Ge)} total)")
         def get_options(s, depth):
             """ Recursive enumeration of all routes we can take away from
             this spot. We'll then pick the best one. """
@@ -323,7 +320,7 @@ def followup_osrm_routing(G, Ge, Gn, center_node):
 
                 # Also, make all edges that end at 'v' also go on to w unless they already go somewhere else.
                 if v in all_v_values:
-                    edges_to_v = Ge.loc[(slice(None), v),  "w"]
+                    edges_to_v = Ge.loc[(slice(None), v), "w"]
                     n_to_fix = (edges_to_v == 0).sum()
                     if n_to_fix:
                         print(f"({n_to_fix})")
@@ -331,3 +328,63 @@ def followup_osrm_routing(G, Ge, Gn, center_node):
                         Ge.loc[(slice(None), v), "w"] = edges_to_v
 
     return Ge
+
+
+def propagate_edges(Ge):
+    Gge = Ge.copy()
+    Gge["through_traffic"] = 0
+    Gge["tmp"] = 0  # Amount of traffic on that edge
+    Gge.loc[Gge.query("ignore==False").index, "tmp"] = 1
+
+    with Timer(prefix="Propagate Edges"):
+        while True:
+            edges_to_propagate = (
+                Gge.reset_index()
+                .query("(tmp > 0) & (w != 0)")
+                .loc[:, ["u", "v", "v2", "w", "tmp"]]
+                .copy()
+            )
+            try:
+                status = (
+                    "Edges to propagate: %d. Traffic: %d +/- %d. Cars on road: %d."
+                    % (
+                        len(edges_to_propagate),
+                        edges_to_propagate.tmp.mean(),
+                        edges_to_propagate.tmp.std(),
+                        edges_to_propagate.tmp.sum(),
+                    )
+                )
+                print(status)
+                if status == old_status:
+                    print("Looping. STOP!")
+                    break
+                old_status = status
+            except:
+                pass
+            if not len(edges_to_propagate):
+                break
+            # Add tmp to through_traffic
+            dfuv = edges_to_propagate.set_index(["u", "v"])
+            Gge.loc[dfuv.index, "through_traffic"] += dfuv.tmp
+            # Zero tmp on main copy
+            Gge.tmp = 0
+            # Propagate tmp to next step
+            dfvw = edges_to_propagate.query("w>0").groupby(["v2", "w"]).tmp.sum()
+            for v, w in dfvw.index:
+                # I think this can be vectorized: Gge.loc[dfvw.index, 'tmp'] = Gge.loc[dfvw.index, 'tmp'] + dfvw.values
+                #  but Pandas was throwing warnings...
+                #         Gge.loc[dfvw.index, 'tmp'] = Gge.loc[dfvw.index, 'tmp'] + dfvw.values
+                if (v, w) not in Gge.index:
+                    #             pass
+                    print(v, w)
+                    raise Exception()
+                else:
+                    Gge.loc[(v, w), "tmp"] = Gge.loc[(v, w), "tmp"] + dfvw.loc[(v, w)]
+        #             raise Exception()
+        #         print(Gge.loc[(v,w)])
+
+        #     if (v,w) in dfuv.index:
+        # Gge.loc[edges_to_propagate.set_index(['u', 'v']).index]
+        #     raise Exception()
+        # Gge = Gge.reset_index()
+    return Gge
