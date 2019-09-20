@@ -1,6 +1,6 @@
 # Install dependencies (OSMNX and other stuff)
 
-```
+```sh
 conda config --add channels conda-forge 
 conda create -c conda-forge --override-channels --name geo osmnx tqdm selenium phantomjs pillow bokeh jupyter
 pip install requests_cache
@@ -8,11 +8,18 @@ source activate geo
 ```
 
 # Install this package
-```
+```sh
 # In the `motorshed` directory, which contains setup.py:
 pip install -e ./
 ```
 To confirm that it worked, try running `import motorshed` in any Python terminal.
+
+# To run the tests
+In the `motorshed` directory that contains `motorshed/setup.py`:
+
+```sh
+pytest ./
+```
 
 ## You will also need to run the osrm-backend, either by OSRM.sh, or...
 ```
