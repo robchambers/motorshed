@@ -7,6 +7,13 @@ pip install requests_cache
 source activate geo
 ```
 
+# Install this package
+```
+# In the `motorshed` directory, which contains setup.py:
+pip install -e ./
+```
+To confirm that it worked, try running `import motorshed` in any Python terminal.
+
 ## You will also need to run the osrm-backend, either by OSRM.sh, or...
 ```
 docker run -t -v $(pwd):/data osrm/osrm-backend osrm-extract -p /opt/car.lua /data/oregon-latest.osm.pbf

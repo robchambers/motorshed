@@ -323,7 +323,7 @@ def followup_osrm_routing(G, Ge, Gn, center_node):
 
                 # Also, make all edges that end at 'v' also go on to w unless they already go somewhere else.
                 if v in all_v_values:
-                    edges_to_v = Ge.loc[(slice(None), v), "w"]
+                    edges_to_v = Ge.loc[(slice(None), v),  "w"]
                     n_to_fix = (edges_to_v == 0).sum()
                     if n_to_fix:
                         print(f"({n_to_fix})")
