@@ -209,7 +209,8 @@ def followup_heuristic_routing(Ge, Gn):
         for i, ((u, v), s) in enumerate(df_to_fix.iterrows()):
             if Ge.loc[(u, v), "w"] != 0:
                 continue  # might have been filled in by previous loops
-            print(f"{i}/{len(df_to_fix)}")
+            if i % 100 == 0:
+                print(f"{i}/{len(df_to_fix)}")
 
             # Search out farther and farther until choice becomes clear.
             for n in range(1, 4, 1):
@@ -339,7 +340,7 @@ def followup_osrm_routing(G, Ge, Gn, center_node, min_iter=50, max_iter=1000):
 def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=100):
     """ Use OSRM routing API calls to fix any remaining unsolved edges."""
 
-    BATCH_SIZE = 10
+    BATCH_SIZE = 25
     N_WORKERS = 5
     import concurrent.futures
 
@@ -400,17 +401,19 @@ def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=
 
                     uu, vv = u, v
 
-                    for i in range(20):
+                    for i in range(500):
                         ww = dfroutings2.loc[(uu, vv)].item()
 
                         if (vv, ww) in Ge.index:
                             Ge.loc[(u, v), "v2"] = int(vv)
                             Ge.loc[(u, v), "w"] = int(ww)
-                            print("!")
+                            print(f"!{i}")
                             break
+                        else:
+                            uu, vv = vv, ww
                     else:
-                        raise Exception()
-
+                        # raise Exception()
+                        print(f'Oh crap! {i}')
                 n_new_solved = len(common_index.intersection(df_unsolved.index))
                 print(f"Solved {n_new_solved} new edges.")
                 Ge.loc[common_index, "w"] = dfroutings2.loc[common_index, "w"]
