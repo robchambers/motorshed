@@ -482,6 +482,11 @@ def propagate_edges(Ge):
                 .groupby(["v2", "w"])
                 .current_traffic.sum()
             )
+
+            common_index = traffic.index.intersection(edge_mapping)
+
+            traffic = traffic.loc[common_index]
+
             dummyindexed_traffic = pd.Series(
                 traffic.values,
                 index=edge_mapping.loc[traffic.index, "edge_idx"].values.astype(int),
