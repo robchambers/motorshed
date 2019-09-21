@@ -483,7 +483,7 @@ def propagate_edges(Ge):
                 .current_traffic.sum()
             )
 
-            common_index = traffic.index.intersection(edge_mapping)
+            common_index = traffic.index.intersection(edge_mapping.index)
 
             traffic = traffic.loc[common_index]
 
