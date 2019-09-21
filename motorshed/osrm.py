@@ -101,3 +101,24 @@ def osrm(
         route, transit_time = [], np.NaN
 
     return route, transit_time, r
+
+def osrm_parallel(G2, node_pairs):
+    N_WORKERS = 4
+
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=N_WORKERS) as executor:
+        future_to_node = {
+            executor.submit(osrm, G2, n1, n2): (n1, n2)
+            for (n1, n2) in node_pairs}
+
+    results = []
+    for future in concurrent.futures.as_completed(future_to_node):
+        nnode = future_to_node[future]
+        try:
+            route, transit_time, r  = future.result()
+        except Exception as exc:
+            print(exc)
+            continue
+        results.append((route, transit_time))
+
+    return results

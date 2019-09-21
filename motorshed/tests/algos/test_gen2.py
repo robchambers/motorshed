@@ -38,7 +38,7 @@ def test_gen2_routing(lebanon_map):
 
     Ge3, Gn3 = gen2.followup_heuristic_routing(Ge2.copy(), Gn2.copy())
 
-    Ge4 = gen2.followup_osrm_routing(G, Ge3, Gn3, center_node)
+    Ge4 = gen2.followup_osrm_routing_parallel(G, Ge3, Gn3, center_node)
 
     assert not len(Ge4.query("w==0 and ignore==False"))
 

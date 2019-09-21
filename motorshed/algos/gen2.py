@@ -172,7 +172,10 @@ def followup_heuristic_routing(Ge, Gn):
     """ Route edges that aren't clear by recursively searching for alternative
     routes that eventually get us closer. """
     with Timer(prefix="Follow-up routing using heuristics"):
-        print(f"Need to fix {len(Ge.query('w==0 and ignore==False'))} ambiguous edges (Currently: {len(Ge.query('ignore==True'))} ignored, {len(Ge.query('w!=0 and ignore==False'))} resolved, {len(Ge)} total)")
+        print(
+            f"Need to fix {len(Ge.query('w==0 and ignore==False'))} ambiguous edges (Currently: {len(Ge.query('ignore==True'))} ignored, {len(Ge.query('w!=0 and ignore==False'))} resolved, {len(Ge)} total)"
+        )
+
         def get_options(s, depth):
             """ Recursive enumeration of all routes we can take away from
             this spot. We'll then pick the best one. """
@@ -200,14 +203,16 @@ def followup_heuristic_routing(Ge, Gn):
             return sum([o.length for o in option])
 
         # Loop through every un-calculated edge.
-        df_to_fix = Ge.query("w==0 and ignore==False").sort_values("end_time", ascending=False)
+        df_to_fix = Ge.query("w==0 and ignore==False").sort_values(
+            "end_time", ascending=False
+        )
         for i, ((u, v), s) in enumerate(df_to_fix.iterrows()):
-            if Ge.loc[(u,v),'w'] != 0:
+            if Ge.loc[(u, v), "w"] != 0:
                 continue  # might have been filled in by previous loops
             print(f"{i}/{len(df_to_fix)}")
 
             # Search out farther and farther until choice becomes clear.
-            for n in range(1, 5, 1):
+            for n in range(1, 4, 1):
                 options = get_options(s, n)
                 if not len(options):
                     # Ge.loc[(u, v), "ignore"] = True  # orphan edge
@@ -222,7 +227,7 @@ def followup_heuristic_routing(Ge, Gn):
                 )
 
                 df = df.query("dt<0")
-                df.loc[:,"efficiency"] = df.dt / df.l
+                df.loc[:, "efficiency"] = df.dt / df.l
                 df = df.sort_values("efficiency")
                 if not len(df):
                     continue
@@ -331,14 +336,99 @@ def followup_osrm_routing(G, Ge, Gn, center_node, min_iter=50, max_iter=1000):
     return Ge
 
 
+def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=100):
+    """ Use OSRM routing API calls to fix any remaining unsolved edges."""
+
+    BATCH_SIZE = 10
+    N_WORKERS = 5
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=N_WORKERS) as executor:
+
+        with Timer(prefix="Fix missing bits with OSRM"):
+            for i in range(max_iter):
+                df_unsolved = Ge.query("w==0 and ignore==False")
+                print("There are %d unsolved edges." % len(df_unsolved))
+
+                df_to_solve = df_unsolved.sample(min(BATCH_SIZE, len(df_unsolved)))
+
+                n_extra_needed = BATCH_SIZE - len(df_to_solve)
+                if n_extra_needed:
+                    df_to_solve = df_to_solve.append(
+                        Ge.query("w > 0 and ignore==False").sample(n_extra_needed)
+                    )
+
+                node_ids = df_to_solve.index.get_level_values("v").unique()
+
+                nodes = set(Ge.index.get_level_values(1)).union(
+                    Ge.index.get_level_values(0)
+                )
+
+                future_to_node = {
+                    executor.submit(
+                        osrm.osrm, G, G.nodes[node_id], center_node
+                    ): node_id
+                    for node_id in node_ids
+                }
+
+                routings = []
+                for future in concurrent.futures.as_completed(future_to_node):
+                    v = future_to_node[future]
+                    try:
+                        route, transit_time, r = future.result()
+                    except Exception as exc:
+                        print(exc)
+                        continue
+
+                    for uu, vv in df_to_solve.loc[pd.IndexSlice[:, [v]], :].index:
+                        rroute = list(filter(lambda e: e in nodes, route))
+                        if rroute[0] != vv:
+                            rroute = [vv] + rroute
+                        rroute = [uu] + rroute
+
+                        routings += [rroute[i : i + 3] for i in range(len(rroute) - 2)]
+
+                dfroutings = pd.DataFrame(routings, columns=["u", "v", "w"])
+                # de-dup, taking most common 'w' if there are multiples
+                dfroutings2 = dfroutings.groupby(["u", "v"]).agg(
+                    lambda x: pd.Series.mode(x)[0]
+                )
+
+                common_index = dfroutings2.index.intersection(Ge.index)
+                missing_index = dfroutings2.index.difference(Ge.index)
+                for (u, v) in missing_index:
+
+                    uu, vv = u, v
+
+                    for i in range(20):
+                        ww = dfroutings2.loc[(uu, vv)].item()
+
+                        if (vv, ww) in Ge.index:
+                            Ge.loc[(u, v), "v2"] = int(vv)
+                            Ge.loc[(u, v), "w"] = int(ww)
+                            print("!")
+                            break
+                    else:
+                        raise Exception()
+
+                n_new_solved = len(common_index.intersection(df_unsolved.index))
+                print(f"Solved {n_new_solved} new edges.")
+                Ge.loc[common_index, "w"] = dfroutings2.loc[common_index, "w"]
+
+                if (len(df_unsolved) == 0) and (i >= min_iter):
+                    break
+
+    return Ge
+
+
 def propagate_edges(Ge):
     # Reset index to a dummy integer index for faster/easier access
     Gge = Ge.copy().reset_index()
 
     # Make a mapping from ('u','v') to this new dummy index
-    edge_mapping = Gge[['u', 'v']].copy()
-    edge_mapping['edge_idx'] = edge_mapping.index
-    edge_mapping = edge_mapping.set_index(['u', 'v'])
+    edge_mapping = Gge[["u", "v"]].copy()
+    edge_mapping["edge_idx"] = edge_mapping.index
+    edge_mapping = edge_mapping.set_index(["u", "v"])
 
     Gge["through_traffic"] = 0
     Gge["current_traffic"] = 0  # Amount of traffic on that edge
@@ -350,8 +440,7 @@ def propagate_edges(Ge):
     with Timer(prefix="Propagate Edges"):
         while True:
             edges_to_propagate = (
-                Gge#.reset_index()
-                .query("(current_traffic > 0)")# & (w != 0)")
+                Gge.query("(current_traffic > 0)")  # .reset_index()  # & (w != 0)")
                 .loc[:, ["u", "v", "v2", "w", "current_traffic"]]
                 .copy()
             )
@@ -361,13 +450,10 @@ def propagate_edges(Ge):
 
             try:
                 assert (edges_to_propagate.w != 0).all()
-                status = (
-                    "Edges to propagate: %d. Traffic: %d. Cars on road: %d."
-                    % (
-                        len(edges_to_propagate),
-                        edges_to_propagate.current_traffic.mean(),
-                        edges_to_propagate.current_traffic.sum(),
-                    )
+                status = "Edges to propagate: %d. Traffic: %d. Cars on road: %d." % (
+                    len(edges_to_propagate),
+                    edges_to_propagate.current_traffic.mean(),
+                    edges_to_propagate.current_traffic.sum(),
                 )
                 print(status)
                 if status == old_status:
@@ -380,15 +466,26 @@ def propagate_edges(Ge):
                 pass
 
             # Tally up current traffic
-            Gge.loc[edges_to_propagate.index, "through_traffic"] += edges_to_propagate.current_traffic
+            Gge.loc[
+                edges_to_propagate.index, "through_traffic"
+            ] += edges_to_propagate.current_traffic
 
             # Zero current traffic on main copy
             Gge.current_traffic = 0
 
             # Propagate current traffic to next step
-            traffic = edges_to_propagate.query("w>0").groupby(["v2", "w"]).current_traffic.sum()
-            dummyindexed_traffic = pd.Series(traffic.values, index=edge_mapping.loc[traffic.index, 'edge_idx'].values)
-            Gge.loc[dummyindexed_traffic.index, "current_traffic"] = dummyindexed_traffic
+            traffic = (
+                edges_to_propagate.query("w>0")
+                .groupby(["v2", "w"])
+                .current_traffic.sum()
+            )
+            dummyindexed_traffic = pd.Series(
+                traffic.values,
+                index=edge_mapping.loc[traffic.index, "edge_idx"].values.astype(int),
+            )
+            Gge.loc[
+                dummyindexed_traffic.index, "current_traffic"
+            ] = dummyindexed_traffic
 
             # for v, w in dfvw.index:
             #     # I think this can be vectorized: Gge.loc[dfvw.index, 'tmp'] = Gge.loc[dfvw.index, 'tmp'] + dfvw.values

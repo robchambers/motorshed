@@ -52,3 +52,20 @@ def test_get_directions(lebanon_map):
     assert len(route) > 2
     assert route[0] == node_id
     assert route[-1] == center_node
+
+def test_get_directions_parallel(lebanon_map):
+    G, center_node, origin_point = lebanon_map
+    G2 = G.copy()
+    # osrm.get_transit_times(G2, center_node)
+
+    N_NODES = 10
+
+
+    node_ids = list(G2.nodes)[:N_NODES]
+    node_pairs = [(G2.nodes[node_id], center_node) for node_id in node_ids]
+
+    results = osrm.osrm_parallel(G2, node_pairs)
+
+
+
+
