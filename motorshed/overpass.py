@@ -15,7 +15,7 @@ def get_map(address, place=None, distance=1000):
     try:
         # Try to load cache
         (G, center_node, origin_point) = util.from_cache_pkl(cache_name)
-        center_node = ox.get_nearest_node(G, origin_point)
+        # center_node = ox.get_nearest_node(G, origin_point)
         return (G, center_node, origin_point)
     except:
         # If cache miss, then load from netowrk.

@@ -45,5 +45,5 @@ def test_gen2_routing(lebanon_map):
     Gge = gen2.propagate_edges(Ge4)
 
     assert (Gge[Gge.ignore == False].through_traffic >= 0).all()
-    assert (Gge.tmp == 0).all()
+    assert (Gge['current_traffic'] == 0).all()
 
