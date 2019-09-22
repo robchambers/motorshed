@@ -15,7 +15,7 @@ from motorshed import osrm
 #     """ G must already have the transit times calculated. """
 
 
-def create_initial_dataframes(G):
+def create_initial_dataframes(G, towards_origin=True):
     """
     Convert graph G into two geodataframes Gn and Ge (nodes and edges)
     that are easier to do calculations on. Add a few useful columns, and
@@ -58,6 +58,7 @@ def create_initial_dataframes(G):
 
         # Graph -> geodataframes
         Gn, Ge = ox.graph_to_gdfs(G, node_geometry=False, fill_edge_geometry=False)
+        Gn, Ge = Gn.copy(), Ge.copy() # make sure original graph is unchanged.
 
         ## Fix up Gn  ( NODES dataframe )
         Gn["w"] = 0
@@ -76,6 +77,13 @@ def create_initial_dataframes(G):
             Gn[f] = Gn[f].astype(t)
 
         ## Fix up Ge ( EDGES dataframe )
+        # Reverse if needed
+        if not towards_origin:
+            Ge[['u', 'v']] = Ge[['v', 'u']]
+            Ge['reversed'] = True
+        else:
+            Ge['reversed'] = False
+
         Ge["w"] = 0  # Next edge is (v, w)
         Ge["v2"] = 0
         Ge["through_traffic"] = 0
@@ -93,6 +101,7 @@ def create_initial_dataframes(G):
 
 
 def initial_routing(Ge, Gn):
+
     with Timer(prefix="Initial routing using heuristics"):
         # Grab edge's start & end time from nodes.
         Ge["start_time"] = Gn.loc[Ge.u].transit_time.values
@@ -124,7 +133,7 @@ def initial_routing(Ge, Gn):
             | Ge.highway.str.contains("driveway")  # shouldn't route here
         )
 
-        # Gives us back an unambiguous index (integers, 0..len(Ge)) but keeps u,v as cols
+        # Gives us back an unambiguous dummy index (integers, 0..len(Ge)) but keeps u,v as cols
         # that we can query more flexibly than if they are in the index
         Ge = Ge.reset_index()
 
@@ -251,7 +260,7 @@ def followup_heuristic_routing(Ge, Gn):
     return Ge, Gn
 
 
-def followup_osrm_routing(G, Ge, Gn, center_node, min_iter=50, max_iter=1000):
+def followup_osrm_routing(G, Ge, Gn, center_node, min_iter=50, max_iter=1000, towards_origin=False):
     """ Use OSRM routing API calls to fix any remaining unsolved edges."""
 
     all_v_values = set(Ge.index.get_level_values(1))
@@ -337,7 +346,7 @@ def followup_osrm_routing(G, Ge, Gn, center_node, min_iter=50, max_iter=1000):
     return Ge
 
 
-def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=100):
+def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=100, towards_origin=True):
     """ Use OSRM routing API calls to fix any remaining unsolved edges."""
 
     BATCH_SIZE = 25
@@ -365,12 +374,20 @@ def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=
                     Ge.index.get_level_values(0)
                 )
 
-                future_to_node = {
-                    executor.submit(
-                        osrm.osrm, G, G.nodes[node_id], center_node
-                    ): node_id
-                    for node_id in node_ids
-                }
+                if towards_origin:
+                    future_to_node = {
+                        executor.submit(
+                            osrm.osrm, G, G.nodes[node_id], center_node
+                        ): node_id
+                        for node_id in node_ids
+                    }
+                else:
+                    future_to_node = {
+                        executor.submit(
+                            osrm.osrm, G, center_node, G.nodes[node_id]
+                        ): node_id
+                        for node_id in node_ids
+                    }
 
                 routings = []
                 for future in concurrent.futures.as_completed(future_to_node):
@@ -383,6 +400,8 @@ def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=
 
                     for uu, vv in df_to_solve.loc[pd.IndexSlice[:, [v]], :].index:
                         rroute = list(filter(lambda e: e in nodes, route))
+                        if not towards_origin:
+                            rroute  = rroute[::-1]
                         if rroute[0] != vv:
                             rroute = [vv] + rroute
                         rroute = [uu] + rroute
@@ -438,6 +457,10 @@ def propagate_edges(Ge):
     valid_edges = Gge.query("w != 0")
     # Each non-ignored edge gets 1 car, plus another 1 car per every 50 m of length.
     Gge.loc[valid_edges.index, "current_traffic"] = 1 + valid_edges.length / 50
+    # No traffic originates on freeways
+    Gge.loc[Gge.highway.str.startswith('motorway') == True, 'current_traffic'] = 0
+    # Residential streets spawn more traffic
+    Gge.loc[Gge.highway.isin(['residential', 'tertiary', 'secondary']) == True, 'current_traffic'] *= 5
 
     old_status = ""
     with Timer(prefix="Propagate Edges"):
