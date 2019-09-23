@@ -416,23 +416,23 @@ def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=
 
                 common_index = dfroutings2.index.intersection(Ge.index)
                 missing_index = dfroutings2.index.difference(Ge.index)
-                for (u, v) in missing_index:
-
-                    uu, vv = u, v
-
-                    for i in range(500):
-                        ww = dfroutings2.loc[(uu, vv)].item()
-
-                        if (vv, ww) in Ge.index:
-                            Ge.loc[(u, v), "v2"] = int(vv)
-                            Ge.loc[(u, v), "w"] = int(ww)
-                            print(f"!{i}")
-                            break
-                        else:
-                            uu, vv = vv, ww
-                    else:
-                        # raise Exception()
-                        print(f'Oh crap! {i}')
+                # for (u, v) in missing_index:
+                #
+                #     uu, vv = u, v
+                #
+                #     for i in range(500):
+                #         ww = dfroutings2.loc[(uu, vv)].item()
+                #
+                #         if (vv, ww) in Ge.index:
+                #             Ge.loc[(u, v), "v2"] = int(vv)
+                #             Ge.loc[(u, v), "w"] = int(ww)
+                #             print(f"!{i}")
+                #             break
+                #         else:
+                #             uu, vv = vv, ww
+                #     else:
+                #         # raise Exception()
+                #         print(f'Oh crap! {i}')
                 n_new_solved = len(common_index.intersection(df_unsolved.index))
                 print(f"Solved {n_new_solved} new edges.")
                 Ge.loc[common_index, "w"] = dfroutings2.loc[common_index, "w"]

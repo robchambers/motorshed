@@ -23,10 +23,16 @@ def chunks(l, n):
         yield l[i : i + n]
 
 
-def get_transit_times(G, origin_point):
+def get_transit_times(G, origin_point, towards_origin=True, profile='driving'):
     """Calculate transit_time for every node in the graph, and add to
     G (in-place) as a 'transit_time' property on each node.
+    :type towards_origin: bool
+        If True, traffic is calculated from each node *to* the `origin_point`. If False,
+        then traffic is `origin_point` *to* each node. This is not symmetric b/c of one-way streets,
+        left turns, etc.
     """
+
+    # Node ID -> actual node.
     if type(origin_point) is int:
         origin_point = G.nodes[origin_point]
         origin_point = [origin_point["lat"], origin_point["lon"]]
@@ -35,13 +41,15 @@ def get_transit_times(G, origin_point):
     starts = ["%s,%s" % (data["lon"], data["lat"]) for n, data in G.node(data=True)]
     times = []
 
+    MAX_N_TABLE_SERVICE = 100
+    origin_is = "destination" if towards_origin else "source"
     # the table service seems limited in number
-    for chunk in chunks(starts, 300):
+    for chunk in chunks(starts, MAX_N_TABLE_SERVICE):
         chunk = ";".join(chunk)
 
         query = (
-            "http://router.project-osrm.org/table/v1/driving/%s;%s?destinations=0"
-            % (end, chunk)
+            "http://router.project-osrm.org/table/v1/%s/%s;%s?%ss=0"
+            % (profile, end, chunk, origin_is)
         )
         # query = (
         #     "http://maps.motorshed.io/osrm/table/v1/driving/%s;%s?destinations=0"
@@ -53,7 +61,13 @@ def get_transit_times(G, origin_point):
         with Timer(prefix="osrm table api"):
             r = requests.get(query)
 
-        times = times + list(np.array(r.json()["durations"])[1:, 0])
+        if towards_origin:
+            times.append(np.array(r.json()["durations"])[1:, 0])
+        else:
+            # durations are nested differently when origin is src
+            times.append(np.array(r.json()["durations"][0])[1:])
+
+    times = np.concatenate(times)
 
     for n, node in enumerate(G.node):
         G.node[node]["transit_time"] = times[n]
