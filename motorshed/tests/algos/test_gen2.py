@@ -26,7 +26,6 @@ def test_gen2_routing(lebanon_map):
     Gn, Ge = gen2.create_initial_dataframes(G)
 
     assert Gn.shape[1] == 10
-    assert Ge.shape[1] == 16
     assert len(Gn)
     assert len(Ge)
 

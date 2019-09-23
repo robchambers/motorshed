@@ -6,13 +6,9 @@ import numpy as np
 import osmnx as ox
 import pandas as pd
 from contexttimer import Timer
+import concurrent.futures
 
 from motorshed import osrm
-
-
-#
-# def do_v2_routing(G, center_node, origin_point):
-#     """ G must already have the transit times calculated. """
 
 
 def create_initial_dataframes(G, towards_origin=True):
@@ -51,14 +47,14 @@ def create_initial_dataframes(G, towards_origin=True):
     # maxspeed            object
     # bridge              object    is a bridge?
     # w                    int64    where traffic is routed to -- Next edge is (v, w)
-    # v2                   int64
+    # v2                   int64    if the routing says (u,v,w), but (v,w) doesn't exist, then just propagate traffic from (u,v) to (v2,w)
     # dtype: object
     """
     with Timer(prefix="Create initial dataframes"):
 
         # Graph -> geodataframes
         Gn, Ge = ox.graph_to_gdfs(G, node_geometry=False, fill_edge_geometry=False)
-        Gn, Ge = Gn.copy(), Ge.copy() # make sure original graph is unchanged.
+        Gn, Ge = Gn.copy(), Ge.copy()  # make sure original graph is unchanged.
 
         ## Fix up Gn  ( NODES dataframe )
         Gn["w"] = 0
@@ -79,10 +75,10 @@ def create_initial_dataframes(G, towards_origin=True):
         ## Fix up Ge ( EDGES dataframe )
         # Reverse if needed
         if not towards_origin:
-            Ge[['u', 'v']] = Ge[['v', 'u']]
-            Ge['reversed'] = True
+            Ge[["u", "v"]] = Ge[["v", "u"]]
+            Ge["reversed"] = True
         else:
-            Ge['reversed'] = False
+            Ge["reversed"] = False
 
         Ge["w"] = 0  # Next edge is (v, w)
         Ge["v2"] = 0
@@ -101,6 +97,12 @@ def create_initial_dataframes(G, towards_origin=True):
 
 
 def initial_routing(Ge, Gn):
+    """Use the transit times from the table API (must already have been run) to do an easy,
+    initial routing that can safe us from querying the slower routing API. Basically,
+    we know that if a segment (u,v) can only continue on to a single follow-on segment (v,w)
+    that gets us closer to the target (that is, all other options take us farther away according
+    to the transit times), then we know that the next step is 'w', unambiguously.
+    """
 
     with Timer(prefix="Initial routing using heuristics"):
         # Grab edge's start & end time from nodes.
@@ -122,7 +124,7 @@ def initial_routing(Ge, Gn):
         #   These are mostly U-shaped side routes/detours.
 
         # Ignore streets that we know will have traffic b/c they: footways; and service roads.
-        #  (unless we are later routed through them)
+        #  (unless we are later routed through them by the OSRM API)
         Ge["ignore"] = False
         Ge.ignore = (
             Ge.ignore
@@ -160,16 +162,18 @@ def initial_routing(Ge, Gn):
         # 5089035979     194721949
         # Name: v, Length: 245, dtype: int64
 
-        # We make a copy of 'v' so that we can query it as a column later after 'v'
-        #  is subsumed back into the index
-        Ge["v2"] = Ge["v"].astype("int")
-
         # We create a new column, 'w', which contains the 'next step' of (u,v) if
         #  we know it... and is 0 otherwise.
         Ge["w"] = Ge.v.map(unambiguous_edges).fillna(0).astype(np.long)
 
         # Special value -1 for 'w' means it's the final traffic sink.
         Ge.loc[Ge.end_time == 0, "w"] = -1
+
+        # We make a copy of 'v' that is used to keep track of how to 'skip' to
+        #  a later segment if the following segment (v,w) doesn't exist (anwer:
+        #  just route traffic to (v2,w) and accept there there will be a 'gap'
+        #  on screen.
+        Ge["v2"] = Ge["v"].astype("int")
 
         # Re-index Ge as (u,v) for fast access.
         Ge = Ge.set_index(["u", "v"])
@@ -179,7 +183,9 @@ def initial_routing(Ge, Gn):
 
 def followup_heuristic_routing(Ge, Gn):
     """ Route edges that aren't clear by recursively searching for alternative
-    routes that eventually get us closer. """
+    routes that eventually get us closer. I think this is needed because the
+    table API can give bogus results. But, if this doesn't work, we'll just
+    use the OSRM Routing API directly in the next step."""
     with Timer(prefix="Follow-up routing using heuristics"):
         print(
             f"Need to fix {len(Ge.query('w==0 and ignore==False'))} ambiguous edges (Currently: {len(Ge.query('ignore==True'))} ignored, {len(Ge.query('w!=0 and ignore==False'))} resolved, {len(Ge)} total)"
@@ -187,7 +193,8 @@ def followup_heuristic_routing(Ge, Gn):
 
         def get_options(s, depth):
             """ Recursive enumeration of all routes we can take away from
-            this spot. We'll then pick the best one. """
+            this spot. We'll then pick the best one. This is SLOW and should
+             be improved or skipped."""
             u, v = s.name
             if depth <= 0:
                 return [[s]]
@@ -217,15 +224,16 @@ def followup_heuristic_routing(Ge, Gn):
         )
         for i, ((u, v), s) in enumerate(df_to_fix.iterrows()):
             if Ge.loc[(u, v), "w"] != 0:
-                continue  # might have been filled in by previous loops
+                continue  # might have been filled in by previous loops; skip! :)
+
             if i % 100 == 0:
                 print(f"{i}/{len(df_to_fix)}")
 
-            # Search out farther and farther until choice becomes clear.
+            # Search out farther and farther hoping that we find
+            #  a route that gets us closer than we are now.
             for n in range(1, 4, 1):
                 options = get_options(s, n)
                 if not len(options):
-                    # Ge.loc[(u, v), "ignore"] = True  # orphan edge
                     break
 
                 df = pd.DataFrame.from_dict(
@@ -244,8 +252,7 @@ def followup_heuristic_routing(Ge, Gn):
 
                 # cool - we found a path that gets us closer. Let's route
                 #  accordingly.
-
-                option = options[df.index[0]]
+                option = options[df.index[0]] # grab the best otion as decided by sorting df
                 for i, step in enumerate(option[:-1]):
                     assert (step.w == 0) or (step.w == option[i + 1].name[1])
                     Ge.loc[step.name, "w"] = option[i + 1].name[1]
@@ -259,100 +266,19 @@ def followup_heuristic_routing(Ge, Gn):
 
     return Ge, Gn
 
+def followup_osrm_routing_parallel(
+    G, Ge, Gn, center_node, min_iter=5, max_iter=100, towards_origin=True
+):
+    """ Use OSRM routing API calls to fix any remaining unsolved edges.
+    This version uses parallelized/simultaneous OSRM calls to speed things up."""
 
-def followup_osrm_routing(G, Ge, Gn, center_node, min_iter=50, max_iter=1000, towards_origin=False):
-    """ Use OSRM routing API calls to fix any remaining unsolved edges."""
-
-    all_v_values = set(Ge.index.get_level_values(1))
-
-    with Timer(prefix="Fix missing bits with OSRM"):
-        for i in range(max_iter):
-            # alternates furthest and closest and semi-random unsolved points
-            if i % 2:
-                df_unsolved = Ge.query("w==0 and ignore==False").sort_values(
-                    "start_time", ascending=i % 3
-                )
-            else:
-                df_unsolved = Ge.query("w==0 and ignore==False").sort_values(
-                    "v2", ascending=i % 3
-                )
-            print("There are %d unsolved edges." % len(df_unsolved))
-
-            if len(df_unsolved) == 0:
-                # No missing edges! Choose a random one.
-                if i > min_iter:
-                    break
-                df_unsolved = Ge.sample(n=1)
-
-            uu, vv = df_unsolved.index[0]
-
-            #     print('Solving from node %d' % vv)
-            try:
-                route, transit_time, r = osrm.osrm(
-                    G, vv, center_node, [], mode="driving", private_host=False
-                )
-            except Exception as e:
-                print(e)
-                df_unsolved.loc[df_unsolved.index[0], "ignore"] = True
-            #     print('Route length: %d' % len(route))
-            nodes = set(Ge.index.get_level_values(1)).union(
-                Ge.index.get_level_values(0)
-            )
-            rroute = list(filter(lambda e: e in nodes, route))
-            if rroute[0] != vv:
-                rroute = [vv] + rroute
-            rroute = [uu] + rroute
-            print("Filtered route length: %d" % len(rroute))
-            for i in range(len(rroute) - 2):
-                u, v, w = rroute[i : i + 3]
-                # if (u, v) in Ge.index:
-                # Specify next edge after this one
-                #             if Ge.loc[(u, v), 'w'] != 0 and Ge.loc[(u, v), 'w'] != w:
-                #                 print(Ge.loc[(u, v)])
-                #                 print(w)
-                #                 print('--')
-                try:
-                    if Ge.loc[(u, v), "w"] != w:
-                        print(f"Fix {(u, v)}, w {Ge.loc[(u, v), 'w']} => {w}")
-                        Ge.loc[(u, v), "w"] = w
-                except KeyError as e:
-                    print("%s missing. (w: %s)" % ((u, v), w))
-                    j = i
-                    while j < len(rroute) - 2:
-                        vv, ww = (rroute[j + 1], rroute[j + 2])
-                        if (vv, ww) in Ge.index:
-                            # v2 indicates that this edge skips ahead to v2
-                            Ge.loc[(u, v), "v2"] = int(vv)
-                            Ge.loc[(u, v), "w"] = int(ww)
-                            print("!")
-                            break
-                        j += 1
-                    else:
-                        print("!!!!")
-
-                #         if (v, w) not in Ge.index:
-                #             print('pow!')
-                #             raise Exception()
-
-                # Also, make all edges that end at 'v' also go on to w unless they already go somewhere else.
-                if v in all_v_values:
-                    edges_to_v = Ge.loc[(slice(None), v), "w"]
-                    n_to_fix = (edges_to_v == 0).sum()
-                    if n_to_fix:
-                        print(f"({n_to_fix})")
-                        edges_to_v.loc[edges_to_v == 0] = w
-                        Ge.loc[(slice(None), v), "w"] = edges_to_v
-
-    return Ge
-
-
-def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=100, towards_origin=True):
-    """ Use OSRM routing API calls to fix any remaining unsolved edges."""
-
+    # How many routings to do before re-scanning for candidate nodes, which
+    #  may have been resolved in the meantime
     BATCH_SIZE = 25
+    # How many calls to do in parallel.
     N_WORKERS = 5
-    import concurrent.futures
 
+    # Spin up a thread pool for parallelization of the OSRM calls.
     with concurrent.futures.ThreadPoolExecutor(max_workers=N_WORKERS) as executor:
 
         with Timer(prefix="Fix missing bits with OSRM"):
@@ -360,20 +286,23 @@ def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=
                 df_unsolved = Ge.query("w==0 and ignore==False")
                 print("There are %d unsolved edges." % len(df_unsolved))
 
+                # We get as many unresolved nodes as we can.
                 df_to_solve = df_unsolved.sample(min(BATCH_SIZE, len(df_unsolved)))
 
+                # And if we need others, we choose them randomly.
                 n_extra_needed = BATCH_SIZE - len(df_to_solve)
                 if n_extra_needed:
                     df_to_solve = df_to_solve.append(
                         Ge.query("w > 0 and ignore==False").sample(n_extra_needed)
                     )
 
+                # OK - these are the nodes we need to route to/from
                 node_ids = df_to_solve.index.get_level_values("v").unique()
-
                 nodes = set(Ge.index.get_level_values(1)).union(
                     Ge.index.get_level_values(0)
                 )
 
+                # Submit the OSRM requests.
                 if towards_origin:
                     future_to_node = {
                         executor.submit(
@@ -389,6 +318,7 @@ def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=
                         for node_id in node_ids
                     }
 
+                # Now grab all of the results and put them into an array.
                 routings = []
                 for future in concurrent.futures.as_completed(future_to_node):
                     v = future_to_node[future]
@@ -401,19 +331,24 @@ def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=
                     for uu, vv in df_to_solve.loc[pd.IndexSlice[:, [v]], :].index:
                         rroute = list(filter(lambda e: e in nodes, route))
                         if not towards_origin:
-                            rroute  = rroute[::-1]
+                            rroute = rroute[::-1]
                         if rroute[0] != vv:
                             rroute = [vv] + rroute
                         rroute = [uu] + rroute
 
+                        # Add to 'routings' as (u,v,w) triplets.
                         routings += [rroute[i : i + 3] for i in range(len(rroute) - 2)]
 
+                # A dataframe of all the triplets from all of the OSRM requests we just did
                 dfroutings = pd.DataFrame(routings, columns=["u", "v", "w"])
-                # de-dup, taking most common 'w' if there are multiples
+
+                # de-dup, taking most common 'w' if there are multiples. (especially on high-traffic routes,
+                #  we probably will have a lot of duplicates from our parallel requests)
                 dfroutings2 = dfroutings.groupby(["u", "v"]).agg(
                     lambda x: pd.Series.mode(x)[0]
                 )
 
+                # Now, get rid of any (u,v) pairs that aren't in the edges array Ge.
                 common_index = dfroutings2.index.intersection(Ge.index)
                 missing_index = dfroutings2.index.difference(Ge.index)
                 # for (u, v) in missing_index:
@@ -437,6 +372,7 @@ def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=
                 print(f"Solved {n_new_solved} new edges.")
                 Ge.loc[common_index, "w"] = dfroutings2.loc[common_index, "w"]
 
+                # If we've solved them all, and have done our min_iter iterations,then break.
                 if (len(df_unsolved) == 0) and (i >= min_iter):
                     break
 
@@ -444,23 +380,32 @@ def followup_osrm_routing_parallel(G, Ge, Gn, center_node, min_iter=5, max_iter=
 
 
 def propagate_edges(Ge):
+    """Propagate traffic from each edge towards the center node, using the routings that we just
+     figured out. """
+
     # Reset index to a dummy integer index for faster/easier access
     Gge = Ge.copy().reset_index()
 
-    # Make a mapping from ('u','v') to this new dummy index
+    # Make a mapping from ('u','v') to this new dummy index to speed up some stuff below.
     edge_mapping = Gge[["u", "v"]].copy()
     edge_mapping["edge_idx"] = edge_mapping.index
     edge_mapping = edge_mapping.set_index(["u", "v"])
 
-    Gge["through_traffic"] = 0
+    Gge["through_traffic"] = 0  # how much traffic has gone through each edge.
     Gge["current_traffic"] = 0  # Amount of traffic on that edge
     valid_edges = Gge.query("w != 0")
+
     # Each non-ignored edge gets 1 car, plus another 1 car per every 50 m of length.
     Gge.loc[valid_edges.index, "current_traffic"] = 1 + valid_edges.length / 50
+
     # No traffic originates on freeways
-    Gge.loc[Gge.highway.str.startswith('motorway') == True, 'current_traffic'] = 0
+    Gge.loc[Gge.highway.str.startswith("motorway") == True, "current_traffic"] = 0
+
     # Residential streets spawn more traffic
-    Gge.loc[Gge.highway.isin(['residential', 'tertiary', 'secondary']) == True, 'current_traffic'] *= 5
+    Gge.loc[
+        Gge.highway.isin(["residential", "tertiary", "secondary"]) == True,
+        "current_traffic",
+    ] *= 5
 
     old_status = ""
     with Timer(prefix="Propagate Edges"):
@@ -475,6 +420,8 @@ def propagate_edges(Ge):
                 break
 
             try:
+                # Print status, and check to make sur eit changed, otherwise
+                # we are in a loop
                 assert (edges_to_propagate.w != 0).all()
                 status = "Edges to propagate: %d. Traffic: %d. Cars on road: %d." % (
                     len(edges_to_propagate),
@@ -491,7 +438,7 @@ def propagate_edges(Ge):
                 raise
                 pass
 
-            # Tally up current traffic
+            # Tally up current traffic as through traffic
             Gge.loc[
                 edges_to_propagate.index, "through_traffic"
             ] += edges_to_propagate.current_traffic
@@ -499,40 +446,24 @@ def propagate_edges(Ge):
             # Zero current traffic on main copy
             Gge.current_traffic = 0
 
-            # Propagate current traffic to next step
+            # Propagate current traffic to next step using the routing we figured out earlier.
             traffic = (
                 edges_to_propagate.query("w>0")
                 .groupby(["v2", "w"])
                 .current_traffic.sum()
             )
 
+            # Drop any edges that don't exist
             common_index = traffic.index.intersection(edge_mapping.index)
-
             traffic = traffic.loc[common_index]
-
             dummyindexed_traffic = pd.Series(
                 traffic.values,
                 index=edge_mapping.loc[traffic.index, "edge_idx"].values.astype(int),
             )
+
+            # Now propagate into the main copy to be ready for the next iteration.
             Gge.loc[
                 dummyindexed_traffic.index, "current_traffic"
             ] = dummyindexed_traffic
 
-            # for v, w in dfvw.index:
-            #     # I think this can be vectorized: Gge.loc[dfvw.index, 'tmp'] = Gge.loc[dfvw.index, 'tmp'] + dfvw.values
-            #     #  but Pandas was throwing warnings...
-            #     #         Gge.loc[dfvw.index, 'tmp'] = Gge.loc[dfvw.index, 'tmp'] + dfvw.values
-            #     if (v, w) not in Gge.index:
-            #         #             pass
-            #         print(v, w)
-            #         raise Exception()
-            #     else:
-            #         Gge.loc[(v, w), "current_traffic"] = Gge.loc[(v, w), "current_traffic"] + dfvw.loc[(v, w)]
-        #             raise Exception()
-        #         print(Gge.loc[(v,w)])
-
-        #     if (v,w) in dfuv.index:
-        # Gge.loc[edges_to_propagate.set_index(['u', 'v']).index]
-        #     raise Exception()
-        # Gge = Gge.reset_index()
     return Gge
