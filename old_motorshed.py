@@ -9,11 +9,10 @@ from contexttimer import Timer
 import pickle
 import pandas as pd
 
-from bokeh.io import export_png, export_svgs
 
 # Cache HTTP requests (other than map requests, which I think are too complicated
 #  to do this with). This is a SQLITE cache that never expires.
-requests_cache.install_cache()
+# requests_cache.install_cache()
 
 
 def chunks(l, n):
@@ -33,22 +32,24 @@ def get_transit_times(G, origin_point):
     # the table service seems limited in number
     for chunk in chunks(starts, 300):
         chunk = ';'.join(chunk)
-        query = 'http://router.project-osrm.org/table/v1/driving/%s;%s?sources=0' % (end, chunk)
+        # query = 'http://router.project-osrm.org/table/v1/driving/%s;%s?destinations=0' % (end, chunk)
+        query = 'http://100.25.101.96/osrm/table/v1/driving/%s;%s?destinations=0' % (end, chunk)
+        # print(query)
         r = requests.get(query)
-        times = times + r.json()['durations'][0][1:]
+        times = times + list(np.array(r.json()['durations'])[1:,0])
 
     for n, node in enumerate(G.node):
         G.node[node]['transit_time'] = times[n]
 
 
-def osrm(G, origin_node, center_node, missing_nodes, mode='driving', localhost=False):
+def osrm(G, origin_node, center_node, missing_nodes, mode='driving', private_host=True):
     """Query the local or remote OSRM for route and transit time"""
 
     start = '%f,%f' % (G.node[origin_node]['lon'], G.node[origin_node]['lat'])
     end = '%f,%f' % (G.node[center_node]['lon'], G.node[center_node]['lat'])
 
-    if localhost:
-        query = 'http://localhost:5000/route/v1/%s/%s;%s?steps=true&annotations=true' % (mode, start, end)
+    if private_host:
+        query = 'http://maps.motorshed.io/osrm/route/v1/%s/%s;%s?steps=true&annotations=true' % (mode, start, end)
     else:
         query = 'http://router.project-osrm.org/route/v1/%s/%s;%s?steps=true&annotations=true' % (mode, start, end)
     r = requests.get(query)
@@ -83,7 +84,7 @@ def get_map(address, place=None, distance=1000):
         print('Cache miss. Loading.')
 
         G, origin_point = ox.graph_from_address(address, distance=distance,
-                                                network_type='all', return_coords=True)
+                                                network_type='drive', return_coords=True)
 
         if place is not None:
             G = ox.graph_from_place(place, network_type='drive')
@@ -125,19 +126,17 @@ def increment_edges(route, G, missing_edges):
         # increment_edges(route[1:], G, missing_edges)
 
 
-def find_all_routes(G, center_node, max_requests=None, show_progress=False):
+def find_all_routes(G, center_node, max_requests=None):
     """Run through the nodes in the graph, calculate routes, and recursively increment edges"""
 
     missing_edges = set([])
     missing_nodes = set([])
 
     n_requests = 0
-    frame = 0
 
-    # duration_threshold = pd.Series([G.nodes[n]['transit_time'] for n in G.nodes]).max() # * .5
+    # duration_threshold = pd.Series([G.nodes[n]['transit_time'] for n in G.nodes]).max() * .5
     # print('SHOWING TRAVEL FROM ADDRESSES WITHIN %.1f MINUTES.' % (duration_threshold/60.0))
-    ordered_graph = sorted(G.nodes(data=True), key=lambda x: x[1]['transit_time'])
-    for n,(origin_node,data) in enumerate(tqdm(ordered_graph)):
+    for origin_node in tqdm(G.nodes()):
         if not G.node[origin_node]['calculated']:# and G.node[origin_node]['transit_time'] < duration_threshold:
             n_requests += 1
             # print('calculating (%d / %s).' % (n_requests, max_requests))
@@ -152,13 +151,6 @@ def find_all_routes(G, center_node, max_requests=None, show_progress=False):
                 print(e)
         # else:
             # print('skipping.')
-
-        if show_progress and n in range(1, len(G), len(G)//50):
-            frame += 1
-            fn = ("%s.%s.%02d" % (address, distance, frame)).replace(',', '')
-            p = make_bokeh_map(G, center_node, output_backend='svg', min_width=0.0, palette_name='viridis')
-            export_png(p, filename=fn + '.png')
-
     else:
         print('Analyzed all nodes without reaching max requests.')
 
@@ -211,10 +203,10 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=1000, 
 
     If saving as svg, set output_backend to 'svg'."""
 
-    if type(center_node) is not list: 
+    if type(center_node) is not list:
         center_node = [center_node]
 
-    palette = {'magma':Magma256, 'viridis':Viridis256, 'greys':Greys256, 
+    palette = {'magma':Magma256, 'viridis':Viridis256, 'greys':Greys256,
                'cividis':Cividis256, 'inferno':Inferno256, 'plasma':Plasma256}
     palette = palette[palette_name]
 
@@ -224,7 +216,7 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=1000, 
     if color_by == 'through_traffic':
         edge_intensity = (edge_intensity / edge_intensity.max() ) * (1 - min_intensity_ratio) + min_intensity_ratio
         edge_intensity = (edge_intensity*255).astype(np.uint8)
-        
+
     elif color_by == 'transit_time':
         edge_intensity = np.array([G.node[u]['transit_time'] + G.node[v]['transit_time'] for u,v in G.edges()])
         edge_intensity = (edge_intensity / edge_intensity.max() ) * (1 - min_intensity_ratio) + min_intensity_ratio
@@ -233,7 +225,7 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=1000, 
     lines = []
     for (u, v, data), width, intensity in zip(G.edges(keys=False, data=True), edge_widths, edge_intensity):
         edge_intensity = intensity
-        color = palette[edge_intensity]
+        color = Magma256[edge_intensity]
         if 'geometry' in data:
             xs, ys = data['geometry'].xy
         else:
@@ -255,8 +247,7 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=1000, 
     df = pd.DataFrame(lines)
     df = df.sort_values('width')
     source = ColumnDataSource(df)
-    p = figure(plot_width=plot_width, plot_height=plot_height, match_aspect=True, 
-               output_backend=output_backend, toolbar_location=toolbar_location)
+    p = figure(plot_width=plot_width, plot_height=plot_height, match_aspect=True, output_backend=output_backend)
     p.outline_line_color = None
     p.xaxis.visible = False
     p.yaxis.visible = False
@@ -291,26 +282,16 @@ def make_bokeh_map(G, center_node, color_by='through_traffic', plot_width=1000, 
     return p
 
 if __name__ == '__main__':
+    address = '32 Bank St Lebanon, NH 03766'
+    distance = 500
+    # address = '601 Minnesota St San Francisco, CA 94107'
+    # distance = 10000
 
-    address = '2700 Broadway, New York, NY 10025'
-    place = 'Manhattan, New York, NY'
-    distance = 10000
+    with Timer(prefix='Get map'):
+        G, center_node, origin_point = get_map(address, distance=distance)
 
-    # calculate fn for cache using fxn arguments.
-    fn = "%s.%s%s.routed.pkl" % (address, place or '', distance)
-    try:
-        # Try to load cache
-        with open(fn, 'rb') as f:
-            (G, center_node) = pickle.load(f)
-
-    except:
-        print("Routing cache missing. Crunching...")
-
-        with Timer(prefix='Get map'):
-            G, center_node, origin_point = get_map(address, distance=distance, place=place)
-
-        with Timer(prefix='Get transit times'):
-            get_transit_times(G, origin_point)
+    with Timer(prefix='Get transit times'):
+        get_transit_times(G, origin_point)
 
         with Timer(prefix='Calculate traffic via'):
                 missing_edges, missing_nodes = find_all_routes(G, center_node, max_requests=60000, show_progress=True)
@@ -320,6 +301,7 @@ if __name__ == '__main__':
             pickle.dump((G, center_node), f)
 
     # Make a map and save it as .SVG
+    from bokeh.io import export_svgs
 
     fn = ("%s.%s" % (address, distance)).replace(',', '')
     print(fn)
