@@ -396,7 +396,7 @@ def propagate_edges(Ge):
     valid_edges = Gge.query("w != 0")
 
     # Each non-ignored edge gets 1 car, plus another 1 car per every 50 m of length.
-    Gge.loc[valid_edges.index, "current_traffic"] = 1 + valid_edges.length / 50
+    Gge.loc[valid_edges.index, "current_traffic"] =  valid_edges.length / 50 # +1
 
     # No traffic originates on freeways
     Gge.loc[Gge.highway.str.startswith("motorway") == True, "current_traffic"] = 0
