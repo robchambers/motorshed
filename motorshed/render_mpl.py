@@ -1,5 +1,5 @@
 import imageio
-import matplotlib.cm as cm
+import matplotlib.cm
 import numpy as np
 from bokeh.palettes import Magma256
 from contexttimer import Timer
@@ -7,9 +7,11 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.collections import LineCollection
 
+from matplotlib.colors import LinearSegmentedColormap
+
 
 def render_layer(
-    Gn, Ge, center_node, bgcolor="black", canvas_inches=8, dpi=150, max_edge_width=None
+    Gn, Ge, center_node, bgcolor="black", canvas_inches=8, dpi=150, max_edge_width=None, cmap=matplotlib.cm.magma
 ):
     """ Fast matplotlib-based function to render the graph defined by Gn and Ge,
       with concentric circles at the center_node. Return
@@ -65,7 +67,7 @@ def render_layer(
     line_coords = list(
         zip(xy1, xy2)
     )  # wish this was a numpy op; that might be possible
-    line_colors = cm.magma(
+    line_colors = cmap(
         gdf.edge_intensity
     )  # map edge intensities using chosen color map
 
@@ -101,14 +103,13 @@ def render_layer(
     # Draw the 'center node'. This is ugly and could be refactored/shortened. Or,
     #  it would be nice to have other options, e.g., a graphic icon
     R = 100  # 100 meters approx
-    cmap = Magma256
 
     ax.add_artist(
         plt.Circle(
             (Gn.loc[center_node].x, Gn.loc[center_node].y),
             zorder=2,
             radius=R,
-            color=cmap[150],
+            color=cmap(150),
             alpha=0.1,
         )
     )
@@ -117,7 +118,7 @@ def render_layer(
             (Gn.loc[center_node].x, Gn.loc[center_node].y),
             zorder=2,
             radius=R * 0.75,
-            color=cmap[190],
+            color=cmap(190),
             alpha=0.2,
         )
     )
@@ -126,7 +127,7 @@ def render_layer(
             (Gn.loc[center_node].x, Gn.loc[center_node].y),
             zorder=2,
             radius=R * 0.65,
-            color=cmap[210],
+            color=cmap(210),
             alpha=0.3,
         )
     )
@@ -135,7 +136,7 @@ def render_layer(
             (Gn.loc[center_node].x, Gn.loc[center_node].y),
             zorder=2,
             radius=R * 0.55,
-            color=cmap[220],
+            color=cmap(220),
             alpha=0.4,
         )
     )
@@ -144,7 +145,7 @@ def render_layer(
             (Gn.loc[center_node].x, Gn.loc[center_node].y),
             zorder=2,
             radius=R * 0.45,
-            color=cmap[235],
+            color=cmap(235),
             alpha=0.55,
         )
     )
@@ -153,7 +154,7 @@ def render_layer(
             (Gn.loc[center_node].x, Gn.loc[center_node].y),
             zorder=2,
             radius=R * 0.35,
-            color=cmap[255],
+            color=cmap(255),
             alpha=1.0,
         )
     )
@@ -183,3 +184,46 @@ def save_layer(fn, rgba_arr):
         imageio.imwrite(fn_png, rgba_arr)
 
     return fn_png
+
+def combine_layers_max(list_of_layers):
+    """ Combine several layers using a 'max' function. Useful for, e.g., bidirectional displays """
+    return np.max(list_of_layers, axis=0)
+
+def concat_layers_horiz(list_of_layers):
+    """ useful for making, e.g., tri-pane displays"""
+    return np.concatenate(list_of_layers, axis=1)
+
+def concat_layers_vert(list_of_layers):
+    """ useful for making, e.g., tri-pane displays"""
+    return np.concatenate(list_of_layers, axis=0)
+
+## Define some useful custom colormaps
+cm_red = LinearSegmentedColormap.from_list('red', [
+    'black',
+    'DarkRed',
+    'FireBrick',
+    'Crimson',
+    'IndianRed',
+    'LightSalmon',
+    'Cornsilk',
+])
+
+cm_blue = LinearSegmentedColormap.from_list('blue', [
+    'black',
+    'MidnightBlue',
+    'MediumBlue',
+    'RoyalBlue',
+    'RoyalBlue',
+    'CornflowerBlue',
+    'LightCyan',
+])
+
+def showarray(a, fmt='png'):
+    """Display an numpy-array image in a Jupyter Notebook."""
+    import PIL.Image
+    from io import BytesIO
+    import IPython.display
+    a = np.uint8(a)
+    with BytesIO() as f:
+        PIL.Image.fromarray(a).save(f, fmt)
+        IPython.display.display(IPython.display.Image(data=f.getvalue()))
