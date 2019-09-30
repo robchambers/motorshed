@@ -1,7 +1,6 @@
 import imageio
 import matplotlib.cm
 import numpy as np
-from bokeh.palettes import Magma256
 from contexttimer import Timer
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -11,7 +10,14 @@ from matplotlib.colors import LinearSegmentedColormap
 
 
 def render_layer(
-    Gn, Ge, center_node, bgcolor="black", canvas_inches=8, dpi=150, max_edge_width=None, cmap=matplotlib.cm.magma
+    Gn,
+    Ge,
+    center_node,
+    bgcolor="black",
+    canvas_inches=8,
+    dpi=150,
+    max_edge_width=None,
+    cmap=matplotlib.cm.magma,
 ):
     """ Fast matplotlib-based function to render the graph defined by Gn and Ge,
       with concentric circles at the center_node. Return
@@ -185,44 +191,57 @@ def save_layer(fn, rgba_arr):
 
     return fn_png
 
+
 def combine_layers_max(list_of_layers):
     """ Combine several layers using a 'max' function. Useful for, e.g., bidirectional displays """
     return np.max(list_of_layers, axis=0)
+
 
 def concat_layers_horiz(list_of_layers):
     """ useful for making, e.g., tri-pane displays"""
     return np.concatenate(list_of_layers, axis=1)
 
+
 def concat_layers_vert(list_of_layers):
     """ useful for making, e.g., tri-pane displays"""
     return np.concatenate(list_of_layers, axis=0)
 
+
 ## Define some useful custom colormaps
-cm_red = LinearSegmentedColormap.from_list('red', [
-    'black',
-    'DarkRed',
-    'FireBrick',
-    'Crimson',
-    'IndianRed',
-    'LightSalmon',
-    'Cornsilk',
-])
+cm_red = LinearSegmentedColormap.from_list(
+    "red",
+    [
+        "black",
+        (50 / 255, 0, 0),
+        "DarkRed",
+        "FireBrick",
+        "Crimson",
+        "IndianRed",
+        # "LightSalmon",
+        "Cornsilk",
+    ],
+)
 
-cm_blue = LinearSegmentedColormap.from_list('blue', [
-    'black',
-    'MidnightBlue',
-    'MediumBlue',
-    'RoyalBlue',
-    'RoyalBlue',
-    'CornflowerBlue',
-    'LightCyan',
-])
+cm_blue = LinearSegmentedColormap.from_list(
+    "blue",
+    [
+        "black",
+        "MidnightBlue",
+        "MediumBlue",
+        "RoyalBlue",
+        "RoyalBlue",
+        "CornflowerBlue",
+        "LightCyan",
+    ],
+)
 
-def showarray(a, fmt='png'):
+
+def showarray(a, fmt="png"):
     """Display an numpy-array image in a Jupyter Notebook."""
     import PIL.Image
     from io import BytesIO
     import IPython.display
+
     a = np.uint8(a)
     with BytesIO() as f:
         PIL.Image.fromarray(a).save(f, fmt)
