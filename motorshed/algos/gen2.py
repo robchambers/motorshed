@@ -2,11 +2,12 @@
 inferring routes using the transit times from the much faster
 Table API."""
 
+import concurrent.futures
+
 import numpy as np
 import osmnx as ox
 import pandas as pd
 from contexttimer import Timer
-import concurrent.futures
 
 from motorshed import osrm
 
@@ -117,12 +118,6 @@ def initial_routing(Ge, Gn):
         ###   Might this cause problems later w/ missing segments?
         Ge = Ge.sort_values("length", ascending=False).groupby(["u", "v"]).first()
 
-        # Cleanup:
-        # Remove edges that point to themselves, which seem to be
-        #   mostly cul-de-sacs
-        # Remove routes that have duplicates by keeping only the shorter on.
-        #   These are mostly U-shaped side routes/detours.
-
         # Ignore streets that we know will have traffic b/c they: footways; and service roads.
         #  (unless we are later routed through them by the OSRM API)
         Ge["ignore"] = False
@@ -135,26 +130,27 @@ def initial_routing(Ge, Gn):
             | Ge.highway.str.contains("driveway")  # shouldn't route here
         )
 
+        # Calculate how efficiently each possible route gets us towards our goal.
+        Ge["speed_mps"] = (
+            Ge.maxspeed.str.replace(" mph", "").astype(float).fillna(25) * 1609 / 3600
+        )
+        Ge["est_transit_time_s"] = Ge["length"] / Ge["speed_mps"]
+        Ge["efficiency"] = Ge["dt"] / Ge["est_transit_time_s"]
+
         # Gives us back an unambiguous dummy index (integers, 0..len(Ge)) but keeps u,v as cols
         # that we can query more flexibly than if they are in the index
         Ge = Ge.reset_index()
 
-        # In the easy/unambiguous case where exactly *one* of the edges exiting a
-        #   node (e.g., intersection) gets us closer to destination, we can make
-        #   a simple mapping -- any traffic through node n1 must go along edge e1
-        #   to node n2.
-        #
-        # Our task is to find the 'next step', `w` for every edge that has traffic.
-        #   The mapping above answers that question for any edge that ends at n1; the
-        #   next step (w) is n2.
+        # Calculate the 'best' next step for each route, based on efficiency, but
+        #  only allowing choices that get us closer (to avoid cycles)
+        best_edges = (
+            Ge.query("dt<0")
+            .sort_values("efficiency", ascending=True)
+            .groupby("u")
+            .v.first()
+        )
 
-        # This groupby gives the end nodes for all the edges that get us closer,
-        #   grouped by start node.
-        unambiguous_edges_groupby = Ge.query("dt<0").groupby("u").v
-        unambiguous_edges = unambiguous_edges_groupby.first()[
-            unambiguous_edges_groupby.count() == 1
-        ]
-        # Now we have a u->v (n1->n2) mapping for unambiguous edges, like:
+        # Now we have a u->v (n1->n2) mapping¬, like:
         # u
         # 25240726       250117169
         # 25240774       250142020
@@ -164,7 +160,7 @@ def initial_routing(Ge, Gn):
 
         # We create a new column, 'w', which contains the 'next step' of (u,v) if
         #  we know it... and is 0 otherwise.
-        Ge["w"] = Ge.v.map(unambiguous_edges).fillna(0).astype(np.long)
+        Ge["w"] = Ge.v.map(best_edges).fillna(0).astype(np.long)
 
         # Special value -1 for 'w' means it's the final traffic sink.
         Ge.loc[Ge.end_time == 0, "w"] = -1
@@ -252,7 +248,9 @@ def followup_heuristic_routing(Ge, Gn):
 
                 # cool - we found a path that gets us closer. Let's route
                 #  accordingly.
-                option = options[df.index[0]] # grab the best otion as decided by sorting df
+                option = options[
+                    df.index[0]
+                ]  # grab the best otion as decided by sorting df
                 for i, step in enumerate(option[:-1]):
                     assert (step.w == 0) or (step.w == option[i + 1].name[1])
                     Ge.loc[step.name, "w"] = option[i + 1].name[1]
@@ -265,6 +263,7 @@ def followup_heuristic_routing(Ge, Gn):
                 ## furthest-away ambiguous edge...
 
     return Ge, Gn
+
 
 def followup_osrm_routing_parallel(
     G, Ge, Gn, center_node, min_iter=5, max_iter=100, towards_origin=True
@@ -396,7 +395,7 @@ def propagate_edges(Ge):
     valid_edges = Gge.query("w != 0")
 
     # Each non-ignored edge gets 1 car, plus another 1 car per every 50 m of length.
-    Gge.loc[valid_edges.index, "current_traffic"] =  valid_edges.length / 50 # +1
+    Gge.loc[valid_edges.index, "current_traffic"] = valid_edges.length / 50  # +1
 
     # No traffic originates on freeways
     Gge.loc[Gge.highway.str.startswith("motorway") == True, "current_traffic"] = 0
