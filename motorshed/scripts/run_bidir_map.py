@@ -3,11 +3,12 @@ from contexttimer import Timer
 import motorshed
 from motorshed import render_mpl
 
-# address = '601 Minnesota St San Francisco, CA 94107'
-# distance = 3_000
+from motorshed.example_parameters import example_maps
 
-address = "32 Bank St Lebanon, NH 03766"
-distance = 2_000
+example_map = example_maps["foster_city_tesla 2km"]
+address = example_map["center_address"]
+distance = example_map["distance_m"]
+
 
 with Timer(prefix="AWAY from origin"):
     towards_origin = False
