@@ -1,5 +1,7 @@
 # Motorshed
 
+See http://www.motorshed.io for a gallery and more info on this project.
+
 Motorshed is an open-source project to explore and visualize traffic patterns using beautiful, stylized maps.
 
 A **Motorshed Map** shows the flow of traffic to (or from) a single point on the map (origin point), 
@@ -14,7 +16,7 @@ on the map, and vice-versa.
 
 You might also find the maps useful for carpool planning (with the origin as your workplace?).
 
-The basic motorshed map can be extended in a few interestion ways:
+The basic motorshed map can be extended in a few interesting ways:
 
 * **The bidirectional map**: shows the *from* and *to* maps either side-by-side, or overlaid with
   different colors. The maps differ slightly due to, e.g., one-way-streets and difficult left turns.
@@ -28,6 +30,11 @@ The basic motorshed map can be extended in a few interestion ways:
 
 This repo contains the basic code to create Motorshed maps using publicly available GIS services based
 on open street map.
+
+An example tri-pane bidirectional map of a street address in San Francisco (10km on a side):
+
+![Bidirectional map](images/example_10k_sf_bidir_tripane.png)
+
 
 ** IMPORTANT NOTE **: The public services (Overpass and OSRM) that we rely on are free; PLEASE don't 
 abuse them. If you're creating anything more than a few maps, please set up your own Overpass and
