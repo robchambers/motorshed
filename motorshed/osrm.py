@@ -33,7 +33,7 @@ def get_transit_times(G, origin_point, towards_origin=True, profile='driving'):
     """
 
     # Node ID -> actual node.
-    if type(origin_point) is int:
+    if type(origin_point) in (int, np.int64):
         origin_point = G.nodes[origin_point]
         origin_point = [origin_point["lat"], origin_point["lon"]]
 
