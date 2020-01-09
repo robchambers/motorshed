@@ -1,2 +1,2 @@
 from . import algos
-from . import (config, example_parameters, osrm, overpass, util)
+from . import (config, example_parameters, osrm, overpass, render_mpl, util)

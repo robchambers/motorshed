@@ -35,6 +35,8 @@ An example tri-pane bidirectional map of a street address in San Francisco (10km
 
 ![Bidirectional map](images/example_10k_sf_bidir_tripane.png)
 
+Or, for the New York Stock Exchange (see the notebooks for this example):
+![Bidirectional map](images/11%20Wall%20Street%20New%20York%20NY.5000.bi_dir_tri_pane.png)
 
 ** IMPORTANT NOTE **: The public services (Overpass and OSRM) that we rely on are free; PLEASE don't 
 abuse them. If you're creating anything more than a few maps, please set up your own Overpass and
