@@ -4,7 +4,7 @@ from motorshed.algos import gen2
 
 from motorshed.example_parameters import example_maps
 
-example_map = example_maps["foster_city_tesla 2km"]
+example_map = example_maps["foster_city_tesla 3km"]
 address = example_map["center_address"]
 distance = example_map["distance_m"]
 
