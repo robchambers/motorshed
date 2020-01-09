@@ -32,7 +32,7 @@ def render_layer(
     #  well.
     if max_edge_width is None:
         max_edge_width = (
-            3
+            2.5
             * (10000 / approx_width_m) ** 0.25
             * (50000 / len(Ge)) ** 0.15
             * (30000 / len(Gn)) ** 0.1
@@ -187,7 +187,7 @@ def save_layer(fn, rgba_arr):
     with Timer(prefix="PNG"):
         fn_png = fn + ".png"
         print(fn_png)
-        imageio.imwrite(fn_png, rgba_arr)
+        imageio.imwrite(fn_png, rgba_arr, format='png', optimize=True, bits=8, prefer_uint8=True, compression=9)
 
     return fn_png
 

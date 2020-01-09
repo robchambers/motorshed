@@ -429,8 +429,8 @@ def propagate_edges(Ge):
                 )
                 print(status)
                 if status == old_status:
-                    print("Looping. STOP!")
-                    raise Exception()
+                    print("Looping without traffic updates. STOP!")
+                    # raise Exception()
                     break
                 old_status = status
             except Exception as e:
