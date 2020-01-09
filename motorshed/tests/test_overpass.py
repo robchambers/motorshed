@@ -16,7 +16,7 @@ def test_import_examples():
 
 
 def test_get_map_with_address():
-    example_name = "lebanon_nh 2km"
+    example_name = "foster_city_tesla 2km"
     example = example_maps[example_name]
 
     G, center_node, origin_point = overpass.get_map(
@@ -25,7 +25,7 @@ def test_get_map_with_address():
 
 
 def test_get_map_with_place():
-    example_name = "lebanon_nh place"
+    example_name = "foster_city_tesla 2km"
     example = example_maps[example_name]
 
     G, center_node, origin_point = overpass.get_map(

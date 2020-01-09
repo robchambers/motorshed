@@ -4,11 +4,11 @@ from motorshed import osrm
 
 
 @pytest.fixture()
-def lebanon_map():
+def example_map():
     from motorshed.example_parameters import example_maps
     from motorshed import overpass
 
-    example_name = "lebanon_nh 2km"
+    example_name = "foster_city_tesla 2km"
     example = example_maps[example_name]
 
     G, center_node, origin_point = overpass.get_map(
