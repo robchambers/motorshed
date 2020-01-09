@@ -1,0 +1,19 @@
+name: motorshed
+channels:
+  - conda-forge
+dependencies:
+  - black
+  - imgaug
+  - jupyter
+  - osmnx
+  - matplotlib
+  - numpy
+  - pandas
+  - pip
+  - pytest
+  - tqdm
+  - pip:
+    - contexttimer
+    - requests
+    - requests_cache
+    - motorshed

@@ -1,10 +1,12 @@
 # Install dependencies (OSMNX and other stuff)
 
 ```sh
-conda config --add channels conda-forge 
-conda create -c conda-forge --override-channels --name geo osmnx tqdm selenium phantomjs pillow bokeh jupyter
-pip install requests_cache
-source activate geo
+# Creates conda environment named 'motorshed'
+conda env create -f environment.yaml
+
+# activates that environment
+conda activate motorshed
+
 ```
 
 # Install this package
