@@ -31,6 +31,8 @@ def test_increment_route(a_route):
         n = route[i]
         e = (route[i], route[i + 1], 0)
         n3 = G3.nodes[n]
+        if e not in G3.edges:
+            continue
         e3 = G3.edges[e]
         assert e3["through_traffic"] >= t
         t = e3["through_traffic"]

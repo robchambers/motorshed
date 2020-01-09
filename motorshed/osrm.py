@@ -38,7 +38,7 @@ def get_transit_times(G, origin_point, towards_origin=True, profile='driving'):
         origin_point = [origin_point["lat"], origin_point["lon"]]
 
     end = "%s,%s" % (origin_point[1], origin_point[0])
-    starts = ["%s,%s" % (data["lon"], data["lat"]) for n, data in G.node(data=True)]
+    starts = ["%s,%s" % (data["lon"], data["lat"]) for n, data in G.nodes(data=True)]
     times = []
 
     MAX_N_TABLE_SERVICE = 100
@@ -69,8 +69,8 @@ def get_transit_times(G, origin_point, towards_origin=True, profile='driving'):
 
     times = np.concatenate(times)
 
-    for n, node in enumerate(G.node):
-        G.node[node]["transit_time"] = times[n]
+    for n, node in enumerate(G.nodes):
+        G.nodes[node]["transit_time"] = times[n]
 
 
 def osrm(
@@ -86,9 +86,9 @@ def osrm(
         missing_nodes = set([])
 
     if not hasattr(end_node, "keys"):
-        end_node = G.node[end_node]
+        end_node = G.nodes[end_node]
     if not hasattr(start_node, "keys"):
-        start_node = G.node[start_node]
+        start_node = G.nodes[start_node]
 
     start = "%f,%f" % (start_node["lon"], start_node["lat"])
     end = "%f,%f" % (end_node["lon"], end_node["lat"])
