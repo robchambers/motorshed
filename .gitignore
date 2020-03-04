@@ -9,3 +9,5 @@
 *.pyc
 *.gif
 *.json
+
+/Motorshed.egg-info/
