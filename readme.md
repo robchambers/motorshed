@@ -110,3 +110,6 @@ Just run `jupyter notebook` in, e.g., the `notebooks` directory. This is a great
 way to explore the maps, and there are several examples to get you started.
 
 You can browse most of the notebooks on Github to see what they look like.
+* [**Basic Example**](notebooks/basic%20example%20notebook.ipynb) ("notebooks/basic example notebook.ipynb"): A smaller, uni-directional map that runs pretty quickly.
+* [**Bidirectional Example**](notebooks/bidirectional%20example.ipynb) ("notebooks/bidirectional example.ipynb"): A bigger tri-pane map that shows traffic in both directions, in different colors, and which runs a lot more slowly.
+
